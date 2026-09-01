@@ -1,7 +1,13 @@
 # Scenario A — Answers
 
 **Exam token:** `root-vmi3536696-1788282556-1536d427`
-**Server:** `169.58.246.108` — Ubuntu REPLACE_ME (`lsb_release -ds`)
+**Server:** `169.58.246.108` — Ubuntu 24.04.4 LTS
+
+> **Shared machine.** This VPS is also used by other students. Unprefixed
+> `alice`/`bob`/`carol`/`dan`, the groups `devs`/`ops`/`auditor` and `/srv/app`
+> already existed and belong to someone else, so every identity, path, unit,
+> port and global config name in my submission is prefixed `abdur`. Details in
+> the table below.
 
 > Placeholders written as `<<FILL: ...>>` are numbers that only exist once the
 > command has actually been run on the server. Fill them from your own output —
@@ -14,6 +20,20 @@
 Everything is created by [`configs/setup-users.sh`](configs/setup-users.sh) and proved by
 [`configs/verify-a1.sh`](configs/verify-a1.sh), whose full output is in
 [`evidence/a1-proof-table.txt`](evidence/a1-proof-table.txt).
+
+### Result
+
+`configs/verify-a1.sh` on 2026-09-01: **PASS=12 FAIL=0** — full output in
+[`evidence/a1-proof-table.txt`](evidence/a1-proof-table.txt).
+
+Two error messages in that output are worth separating, because they look
+similar and mean different things:
+
+- check 4/10/11 — `Permission denied` (`EACCES`): a permission bit or an ACL
+  refused the access.
+- check 8 — `Operation not permitted` (`EPERM`): carol's permissions were fine;
+  the *file attribute* `chattr +i` refused it. That distinction is the proof
+  that the immutable flag, not the sticky bit, is what stops her.
 
 ### The access model
 
@@ -73,8 +93,7 @@ sudo chattr +i /srv/abdur/app/backups/backup1.tar
 useful work: it stops other `abdur_ops` members deleting each other's files.
 
 Caveat I checked: `chattr` needs a filesystem that supports the attribute —
-ext4 and xfs do, overlayfs and tmpfs do not. On this VPS `/srv` is
-`<<FILL: findmnt -no FSTYPE /srv>>`.
+ext4 and xfs do, overlayfs and tmpfs do not. On this VPS `/srv` is **ext4**, which supports it (`findmnt -no FSTYPE /srv`).
 
 ### Task 4 — Restart without full sudo
 
@@ -103,10 +122,10 @@ in the policy. `sudo -l -U abdur_alice` prints the exact allowed list.
 
 | Question | Command | Answer |
 | --- | --- | --- |
-| Which PID | `sudo ss -lptn 'sport = :8180'` | `<<FILL: pid>>` |
-| Which binary | `sudo ls -l /proc/<PID>/exe` | `<<FILL: /usr/bin/python3.x>>` |
+| Which PID | `ss -lptn 'sport = :8180'` | `103178` |
+| Which binary | `readlink -f /proc/103178/exe` | `/usr/bin/python3.12` |
 | Which user | `ps -o user= -p <PID>` / `stat -c %U /proc/<PID>` | `root` |
-| When started | `ps -o lstart= -p <PID>` | `<<FILL>>` |
+| When started | `ps -o lstart= -p 103178` | `Tue Sep 1 20:50:59 2026` |
 | Full command line | `tr '\0' ' ' < /proc/<PID>/cmdline; echo` | `python3 -m http.server 8180` |
 
 `ps` truncates and `lsof` needs installing; `/proc/<PID>/` is always there and
@@ -143,13 +162,54 @@ grep -r 8180 /etc/cron* /var/spool/cron/crontabs/ 2>/dev/null
 
 The decisive one is the cgroup. A service lives in
 `/system.slice/<name>.service`; a cron job lives under `cron.service`; something
-I typed lives in `/user.slice/user-1000.slice/session-N.scope`. On my box the
-process was in `<<FILL: paste the cgroup line>>`, so it was
-**`<<FILL: started manually from an interactive shell>>`** — its parent was my
-own `bash`, and `journalctl` had nothing for it because it was writing to my
-terminal, not to the journal.
+I typed lives in `/user.slice/user-1000.slice/session-N.scope`. On my box the python process was in:
 
-**If it had been started by systemd, what does `kill -9` do?** Nothing lasting.
+```
+0::/user.slice/user-0.slice/session-985.scope
+```
+
+and my own service, for comparison, was in:
+
+```
+0::/system.slice/abdur-myapp.service
+```
+
+so the mystery process was **started manually from an interactive shell**. Four
+independent signals agreed, which is what makes the answer safe rather than a
+guess:
+
+| Signal | Result |
+| --- | --- |
+| cgroup | `session-985.scope` — a login session, not a unit |
+| parent | `-bash` |
+| `systemctl status 103178` | `Session 985 of User root`, `Transient: yes` |
+| `grep -rn 8180 /etc/cron*` | nothing |
+
+`Transient: yes` is the giveaway: that scope has no unit file on disk, systemd
+created it on the fly when I opened the SSH session.
+
+**If it had been started by systemd, what does `kill -9` do?** Nothing lasting —
+and I proved it rather than asserting it, by doing exactly that to my own
+service:
+
+```
+kill korar AGE  PID : 102662
+>>> kill -9 102662
+3 second PORE   PID : 103465
+service ekhon       : active
+```
+
+The journal narrates the whole decision:
+
+```
+21:05:15 systemd[1]: abdur-myapp.service: Main process exited, code=killed, status=9/KILL
+21:05:15 systemd[1]: abdur-myapp.service: Failed with result 'signal'.
+21:05:17 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 1.
+21:05:17 systemd[1]: Started abdur-myapp.service
+21:05:17 abdur-myapp[103465]: listening on 0.0.0.0:3100 (pid 103465)
+```
+
+
 systemd is the process's parent, reaps it, sees a non-zero/killed exit, and
 `Restart=` brings it straight back with a new PID. You get a port that is free
 for a second or two and then taken again by a different PID — the classic "I
@@ -164,11 +224,14 @@ process, `Ctrl-C` in its own terminal, or `sudo kill <PID>` (SIGTERM — polite,
 lets Python's handler run) from another. `kill -9` only if TERM is ignored.
 Then:
 
-```bash
-sudo ss -lptn 'sport = :8180'   # no output = free
 ```
-
-<<FILL: paste the empty ss output>>
+--- AGE ---
+LISTEN 0 5 0.0.0.0:8180 0.0.0.0:* users:(("python3",pid=103178,fd=3))
+>>> kill 103178   (SIGTERM)
+[1]-  Terminated   nohup python3 -m http.server 8180
+--- PORE ---
+  port 8180 EKHON FAKA
+```
 
 ### Task 8 — "Timed out" vs "connection refused"
 
@@ -185,9 +248,31 @@ where to look:
   network ACL that does not allow the port (this is the usual one), `ufw`/
   `iptables` with a DROP policy, or the host being unreachable entirely.
 
-For my case, `curl localhost:8180` works but `curl http://<server-ip>:8180`
-from my laptop `<<FILL: timed out / was refused>>`, so the cause was
-`<<FILL: e.g. the provider security group only allows 22/80/443>>`.
+**What I measured.** This VPS has `ufw` inactive, and `iptables -L INPUT` shows
+`policy ACCEPT` with exactly one rule — `DROP tcp dpt:8080`, added by another
+student on this shared box. That handed me both failure modes to compare
+without touching the firewall myself. Four requests from my laptop:
+
+| Port | Server-side state | Result from laptop | Time | curl exit |
+| --- | --- | --- | --- | --- |
+| 8180 | listening on `0.0.0.0` | `200 OK` | 0.44 s | 0 |
+| 8182 | listening on `127.0.0.1` only | `Failed to connect` | **0.26 s** | 7 |
+| 8080 | listening, but a `DROP` rule | `Connection timed out` | **6.01 s** | 28 |
+| 9999 | nothing listening | `Failed to connect` | 0.22 s | 7 |
+
+The timing is the physical signature of the difference, and the gap is ~23x:
+
+- **8182 and 9999** — the SYN reached the host. The kernel found nothing
+  listening on that address and replied with a RST immediately, so curl gave up
+  after a single round trip.
+- **8080** — the SYN was silently discarded by the DROP rule. Nothing came back
+  at all, so TCP retransmitted and curl sat there until my `--max-time 6`
+  expired.
+
+Note what 8182 and 9999 have in common: seen from outside, **"the app is not
+running" and "the app is bound to the wrong address" are indistinguishable**.
+Only `ss -lntp` on the server separates them — which is exactly why that is the
+first command to run rather than the last.
 
 The diagnosis sequence:
 

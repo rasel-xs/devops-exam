@@ -1,0 +1,113 @@
+PROOF;
+cd /root/abdur-exam/scenario-a
+tok
+bash configs/verify-a1.sh 2>&1 | tee evidence/a1-proof-table.txt
+
+
+
+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Tue Sep  1 20:33:31 CEST 2026
+host      : vmi3536696
+
+=================== A1 PROOF TABLE ===================
+1   abdur_alice   expect=ok      rc=0   PASS
+    $ echo test >> /srv/abdur/app/src/main.js && tail -1 /srv/abdur/app/src/main.js
+    | test
+
+2   abdur_alice   expect=ok      rc=0   PASS
+    $ cat /srv/abdur/app/logs/app.log | tail -1
+    | 2026-09-01T20:13:53+02:00 app started
+
+3   abdur_alice   expect=ok      rc=0   PASS
+    $ sudo -n systemctl restart abdur-myapp && systemctl is-active abdur-myapp
+    | active
+
+4   abdur_alice   expect=denied  rc=1   PASS
+    $ cat /srv/abdur/app/secrets/db-password.txt
+    | cat: /srv/abdur/app/secrets/db-password.txt: Permission denied
+
+5   abdur_alice   expect=denied  rc=1   PASS
+    $ sudo -n apt update
+    | Sorry, user abdur_alice is not allowed to execute '/usr/bin/apt update' as root on vmi3536696.contaboserver.net.
+
+6   abdur_carol   expect=ok      rc=0   PASS
+    $ echo x >> /srv/abdur/app/config/app.conf && tail -1 /srv/abdur/app/config/app.conf
+    | x
+
+7   abdur_carol   expect=ok      rc=0   PASS
+    $ cat /srv/abdur/app/secrets/db-password.txt
+    | hunter2-not-the-real-one
+
+8   abdur_carol   expect=denied  rc=1   PASS
+    $ rm -f /srv/abdur/app/backups/backup1.tar
+    | rm: cannot remove '/srv/abdur/app/backups/backup1.tar': Operation not permitted
+
+9   abdur_dan     expect=ok      rc=0   PASS
+    $ ls -l /srv/abdur/app/secrets/
+    | total 4
+    | -rw-r----- 1 root abdur_ops 25 Sep  1 20:13 db-password.txt
+
+10  abdur_dan     expect=denied  rc=1   PASS
+    $ cat /srv/abdur/app/secrets/db-password.txt
+    | cat: /srv/abdur/app/secrets/db-password.txt: Permission denied
+
+11  abdur_dan     expect=denied  rc=1   PASS
+    $ echo x >> /srv/abdur/app/src/main.js
+    | bash: line 1: /srv/abdur/app/src/main.js: Permission denied
+
+12  abdur_dan     expect=denied  rc=1   PASS
+    $ sudo -n systemctl restart abdur-myapp
+    | sudo: a password is required
+
+======================================================
+PASS=12 FAIL=0
+
+--- supporting evidence ---
+$ sudo -l -U abdur_alice
+Matching Defaults entries for abdur_alice on vmi3536696:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin, use_pty
+
+Runas and Command-specific defaults for abdur_alice:
+    Defaults!/usr/bin/apt !authenticate
+
+User abdur_alice may run the following commands on vmi3536696:
+    (root) NOPASSWD: /usr/bin/systemctl restart abdur-myapp, /usr/bin/systemctl restart abdur-myapp.service, /usr/bin/systemctl start abdur-myapp, /usr/bin/systemctl start abdur-myapp.service, /usr/bin/systemctl stop abdur-myapp, /usr/bin/systemctl stop abdur-myapp.service, /usr/bin/systemctl status abdur-myapp, /usr/bin/systemctl status abdur-myapp.service, /bin/systemctl restart abdur-myapp, /bin/systemctl restart abdur-myapp.service, /bin/systemctl start abdur-myapp, /bin/systemctl stop abdur-myapp, /bin/systemctl status abdur-myapp, /usr/bin/journalctl -u abdur-myapp, /usr/bin/journalctl -u abdur-myapp *
+
+$ sudo -l -U abdur_dan
+User abdur_dan is not allowed to run sudo on vmi3536696.
+
+$ getfacl -p /srv/abdur/app/secrets
+# file: /srv/abdur/app/secrets
+# owner: root
+# group: abdur_ops
+user::rwx
+group::r-x
+group:abdur_auditor:r-x
+mask::r-x
+other::---
+
+$ getfacl -p /srv/abdur/app/secrets/db-password.txt
+# file: /srv/abdur/app/secrets/db-password.txt
+# owner: root
+# group: abdur_ops
+user::rw-
+group::r--
+other::---
+
+$ ls -la /srv/abdur/app/backups
+total 20
+drwxrws--T+ 2 abdur_carol abdur_ops 4096 Sep  1 20:13 .
+drwxr-xr-x  7 root        root      4096 Sep  1 20:13 ..
+-rw-r-----+ 1 root        abdur_ops   57 Sep  1 20:13 backup1.tar
+-rw-r-----+ 1 root        abdur_ops   57 Sep  1 20:13 backup2.tar
+-rw-r-----+ 1 root        abdur_ops   57 Sep  1 20:13 backup3.tar
+$ lsattr /srv/abdur/app/backups
+----i---------e------- /srv/abdur/app/backups/backup2.tar
+----i---------e------- /srv/abdur/app/backups/backup1.tar
+----i---------e------- /srv/abdur/app/backups/backup3.tar
+$ id abdur_alice; id abdur_carol; id abdur_dan
+uid=1028(abdur_alice) gid=1040(abdur_devs) groups=1040(abdur_devs)
+uid=1030(abdur_carol) gid=1041(abdur_ops) groups=1041(abdur_ops),1040(abdur_devs)
+uid=1031(abdur_dan) gid=1042(abdur_auditor) groups=1042(abdur_auditor)
