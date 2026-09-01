@@ -736,7 +736,7 @@ Stack file: [`docker/stack.yml`](docker/stack.yml).
 **Nodes used: `<<FILL: one / two>>`.** `docker node ls` and
 `docker stack services notes` in `evidence/b4-stack.png`.
 
-The stack pulls `ghcr.io/REPLACE_WITH_GH_USER/notes-api:v1` from the registry.
+The stack pulls `ghcr.io/rasel-xs/notes-api:v1` from the registry.
 `build:` is ignored entirely by `docker stack deploy` — it does not warn, the
 service simply never starts on a node that lacks the image.
 

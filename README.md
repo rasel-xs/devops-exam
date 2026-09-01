@@ -1,8 +1,8 @@
 # DevOps Practical Exam
 
-**Name:** <YOUR NAME>
-**Exam token:** `REPLACE_WITH_EXAM_TOKEN`
-**Server IP:** `REPLACE_WITH_VPS_IP`
+**Name:** Abdur Rahim (GitHub: rasel-xs)
+**Exam token:** `root-vmi3536696-1788282556-1536d427`
+**Server IP:** `169.58.246.108`
 
 > Generate the token on the VPS *before anything else*:
 >
@@ -12,21 +12,21 @@
 > echo "export EXAM_TOKEN=\"$EXAM_TOKEN\"" >> ~/.bashrc
 > ```
 >
-> Then replace every `REPLACE_WITH_EXAM_TOKEN` in this repo:
+> Then replace every `root-vmi3536696-1788282556-1536d427` in this repo:
 >
 > ```bash
-> grep -rl REPLACE_WITH_EXAM_TOKEN . | xargs sed -i '' "s/REPLACE_WITH_EXAM_TOKEN/$EXAM_TOKEN/g"   # macOS
-> grep -rl REPLACE_WITH_EXAM_TOKEN . | xargs sed -i    "s/REPLACE_WITH_EXAM_TOKEN/$EXAM_TOKEN/g"   # Linux
+> grep -rl root-vmi3536696-1788282556-1536d427 . | xargs sed -i '' "s/root-vmi3536696-1788282556-1536d427/$EXAM_TOKEN/g"   # macOS
+> grep -rl root-vmi3536696-1788282556-1536d427 . | xargs sed -i    "s/root-vmi3536696-1788282556-1536d427/$EXAM_TOKEN/g"   # Linux
 > ```
 
 ## Hosted / live links
 
 | What | Where |
 | --- | --- |
-| App behind nginx (Scenario A) | http://REPLACE_WITH_VPS_IP/ |
-| Grafana dashboard (Scenario B) | http://REPLACE_WITH_VPS_IP:3001/ (`exam-REPLACE_WITH_EXAM_TOKEN`) |
-| Prometheus | http://REPLACE_WITH_VPS_IP:9090/ |
-| Container registry | ghcr.io/REPLACE_WITH_GH_USER/notes-api |
+| App behind nginx (Scenario A) | http://169.58.246.108:8110/ |
+| Grafana dashboard (Scenario B) | http://169.58.246.108:3130/ (`exam-root-vmi3536696-1788282556-1536d427`) |
+| Prometheus | http://169.58.246.108:9190/ |
+| Container registry | ghcr.io/rasel-xs/notes-api |
 | Scenario C app | REPLACE_WITH_AWS_URL |
 
 ## Repository map

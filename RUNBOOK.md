@@ -18,7 +18,7 @@ Then, in the repo, substitute it everywhere:
 ```bash
 grep -rl REPLACE_WITH_EXAM_TOKEN . | xargs sed -i '' "s/REPLACE_WITH_EXAM_TOKEN/$EXAM_TOKEN/g"
 grep -rl REPLACE_WITH_VPS_IP     . | xargs sed -i '' "s/REPLACE_WITH_VPS_IP/<your-ip>/g"
-grep -rl REPLACE_WITH_GH_USER    . | xargs sed -i '' "s/REPLACE_WITH_GH_USER/<your-gh-user>/g"
+# (GitHub user rasel-xs is already substituted throughout)
 git commit -am "Substitute exam token, server IP and registry owner"
 ```
 

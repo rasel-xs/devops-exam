@@ -5,7 +5,7 @@
 #
 [Unit]
 Description=abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)
-Documentation=https://github.com/REPLACE_WITH_GH_USER/devops-exam
+Documentation=https://github.com/rasel-xs/devops-exam
 
 # network.target only means "the network stack has been configured", which is
 # true long before an address is actually up. network-online.target is the one
