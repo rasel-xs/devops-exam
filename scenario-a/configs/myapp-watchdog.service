@@ -1,0 +1,16 @@
+# /etc/systemd/system/myapp-watchdog.service
+# Type=oneshot: it runs, it exits, that is the whole life cycle. The .timer is
+# what makes it happen repeatedly -- this unit is never enabled itself.
+[Unit]
+Description=myapp external health probe (exam token: REPLACE_WITH_EXAM_TOKEN)
+# Do not probe an app that is deliberately stopped, otherwise the watchdog
+# helpfully starts it again every 30 seconds and you can never take it down.
+After=myapp.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/myapp-watchdog.sh
+# Runs as root because it calls `systemctl restart`. The alternative is a
+# polkit rule; root on a probe this small is the smaller risk.
+User=root
+SyslogIdentifier=myapp-watchdog

@@ -1,0 +1,24 @@
+# /etc/systemd/system/myapp-watchdog.timer
+#
+#   sudo systemctl enable --now myapp-watchdog.timer
+#   systemctl list-timers myapp-watchdog.timer
+#
+[Unit]
+Description=Probe myapp every 30s and restart it if it stops answering
+
+[Timer]
+# Wait for the app to settle after a reboot before the first probe, otherwise
+# the watchdog restarts a service that was still starting up.
+OnBootSec=1min
+# 30s after the previous RUN FINISHED. OnUnitActiveSec measures from the last
+# activation; OnCalendar would be wall-clock. For a probe, "30s after the last
+# one" is what you want.
+OnUnitActiveSec=30s
+# systemd defaults to AccuracySec=1min, which it uses to batch timers together
+# and let the CPU idle. On a 30s timer that default lets it drift to a minute
+# or more -- which looks exactly like "my watchdog does not work".
+AccuracySec=1s
+Unit=myapp-watchdog.service
+
+[Install]
+WantedBy=timers.target

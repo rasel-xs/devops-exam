@@ -1,0 +1,77 @@
+# /etc/systemd/system/myapp.service
+#
+#   sudo cp myapp.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now myapp
+#
+[Unit]
+Description=myapp demo service (exam token: REPLACE_WITH_EXAM_TOKEN)
+Documentation=https://github.com/REPLACE_WITH_GH_USER/devops-exam
+
+# network.target only means "the network stack has been configured", which is
+# true long before an address is actually up. network-online.target is the one
+# that waits for a routable address -- and it only does anything if something
+# pulls it in, which is what Wants= below does. Wants+After without the
+# systemd-networkd-wait-online / NetworkManager-wait-online unit enabled is a
+# very common way to think you have ordering when you do not.
+Wants=network-online.target
+After=network-online.target
+
+# Ordering after the database. Change to nginx.service if postgres is not
+# installed. After= is ordering ONLY -- it does not start postgres, and if
+# postgres is dead this unit still starts. Requires= would couple them; I have
+# deliberately not used it, because the app retries its connection and I would
+# rather it run and report unready than refuse to start.
+After=postgresql.service
+
+# A4 task 13: give up after 5 starts in 60 seconds instead of restarting for
+# ever. On systemd >= 230 these live in [Unit], not [Service] -- putting them
+# in [Service] parses without error on some versions and is silently ignored,
+# which is why the crash loop "never stops" for a lot of people.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+
+# A dedicated system account with no shell and no home.
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin myappuser
+User=myappuser
+Group=myappuser
+
+WorkingDirectory=/srv/app/src
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node /srv/app/src/server.js
+
+Restart=on-failure
+# 1s rather than the 100ms default so six crashes take ~6s, not milliseconds,
+# and the journal is readable afterwards.
+RestartSec=1
+
+# Give the app a chance to finish in-flight requests before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# A4 task 12 requirement 4 -- lets me do `journalctl -t myapp` as well as -u.
+SyslogIdentifier=myapp
+StandardOutput=journal
+StandardError=journal
+
+# --- hardening ---------------------------------------------------------------
+# Not asked for, but this is the difference between "runs as non-root" and
+# "cannot become root". NoNewPrivileges alone blocks the whole setuid path.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+# ProtectSystem=strict makes the entire filesystem read-only, so the one path
+# the app legitimately writes has to be named explicitly.
+ReadWritePaths=/srv/app/logs
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+# /etc/systemd/system/myapp@.service -- template unit, one instance per port.
+#
+#   sudo systemctl enable --now myapp@3001 myapp@3002
+#
+# %i is the bit after the @, so `myapp@3001` starts with PORT=3001. Two copies
+# of the same app on two ports for the nginx load-balancing task (A5), without
+# two nearly-identical unit files to keep in sync.
+[Unit]
+Description=myapp backend on port %i (exam token: REPLACE_WITH_EXAM_TOKEN)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=myappuser
+Group=myappuser
+WorkingDirectory=/srv/app/src
+Environment=NODE_ENV=production
+Environment=PORT=%i
+ExecStart=/usr/bin/node /srv/app/src/server.js
+Restart=on-failure
+RestartSec=1
+# %i in the identifier so `journalctl -t myapp-3001` filters one backend.
+SyslogIdentifier=myapp-%i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/app/logs
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,37 @@
+# A4 task 13, second half: the SAME unit with Restart=always and NO start
+# limit. Install over the top of myapp.service, `daemon-reload`, then run the
+# crash loop again and watch it restart for ever.
+#
+#   sudo cp myapp.service.restart-always /etc/systemd/system/myapp.service
+#   sudo systemctl daemon-reload && sudo systemctl restart myapp
+#
+# Restore the limited version afterwards.
+[Unit]
+Description=myapp demo service -- RESTART=ALWAYS VARIANT (token: REPLACE_WITH_EXAM_TOKEN)
+Wants=network-online.target
+After=network-online.target postgresql.service
+# StartLimitBurst=0 disables the rate limiter entirely. Simply deleting the two
+# StartLimit lines is NOT the same thing: systemd then falls back to its
+# defaults of 5 starts per 10s, and you would still see the service give up.
+StartLimitIntervalSec=0
+StartLimitBurst=0
+
+[Service]
+Type=simple
+User=myappuser
+Group=myappuser
+WorkingDirectory=/srv/app/src
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node /srv/app/src/server.js
+Restart=always
+RestartSec=1
+SyslogIdentifier=myapp
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/app/logs
+
+[Install]
+WantedBy=multi-user.target

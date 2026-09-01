@@ -107,6 +107,12 @@ echo "== ACLs =="
 setfacl -R  -m g:auditor:rX "$APP/src" "$APP/config" "$APP/logs" "$APP/backups"
 setfacl -R -d -m g:auditor:rX "$APP/src" "$APP/config" "$APP/logs" "$APP/backups"
 
+# The service account can read its own source and config, but nothing else. It
+# is deliberately NOT a member of devs -- membership would let a compromised
+# app process write to the source tree.
+setfacl -R  -m u:myappuser:rX "$APP/src" "$APP/config"
+setfacl -R -d -m u:myappuser:rX "$APP/src" "$APP/config"
+
 # devs get read-only on config so they can see what the app is configured with.
 setfacl -R  -m g:devs:rX "$APP/config"
 setfacl -R -d -m g:devs:rX "$APP/config"
