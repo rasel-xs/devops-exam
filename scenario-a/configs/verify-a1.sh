@@ -20,13 +20,19 @@ echo
 run() {
   local n=$1 user=$2 expect=$3; shift 3
   local out rc
+  # Run the command AS that user and keep both its output and its exit status.
+  # rc != 0 is what "denied" means here -- Permission denied, sudo refusing,
+  # and rm hitting an immutable file all surface as a non-zero exit.
   out=$(sudo -u "$user" bash -c "$*" 2>&1); rc=$?
-  local got=ok; [ $rc -ne 0 ] && got=denied
+  local got=ok; [ "$rc" -ne 0 ] && got=denied
   local verdict="PASS"; [ "$got" != "$expect" ] && verdict="FAIL"
-  [ "$verdict" = PASS ] && PASS=$((PASS+1)) || FAIL=$((FAIL+1))
-  printf '%-3s %-6s expect=%-6s rc=%-3s %s\n' "$n" "$user" "$expect" "$rc" "$verdict"
+  if [ "$verdict" = PASS ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
+
+  printf '%-3s %-13s expect=%-7s rc=%-3s %s\n' "$n" "$user" "$expect" "$rc" "$verdict"
   printf '    $ %s\n' "$*"
-  [ -n "$out" ] && printf '    | %s\n' "$(echo "$out" | head -4 | sed 's/$/ /' | paste -sd'\n' - | sed '2,$s/^/    | /')"
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out" | head -4 | sed 's/^/    | /'
+  fi
   echo
 }
 
