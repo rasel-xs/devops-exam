@@ -1,0 +1,23 @@
+# 28d -- port published, connection refused from the host.
+#   docker compose -f docker/docker-compose.yml -f docker/drills/28d-loopback.yml up -d app
+#   docker compose ps                     # up, port 3000 published
+#   curl http://localhost:3000/healthz     # connection refused
+#   docker compose exec app wget -qO- http://127.0.0.1:3000/healthz   # works!
+#
+# The app binds the CONTAINER's loopback interface. `ports:` sets up a proxy /
+# DNAT rule from the host into the container's network namespace, and traffic
+# arrives on the container's eth0 -- an interface nothing is listening on. The
+# listener on 127.0.0.1 inside the namespace is unreachable from outside it by
+# design.
+#
+# Diagnosis in one command:
+#   docker compose exec app netstat -lntp    (or `ss -lntp` where available)
+#   -> tcp  127.0.0.1:3000  LISTEN     means the bind address is wrong
+#   -> tcp  0.0.0.0:3000    LISTEN     means look at the firewall / publish flag
+#
+# Same failure mode as Scenario A task 8, one layer down. "Refused" means
+# something answered with a RST; "timed out" means the packets vanished.
+services:
+  app:
+    environment:
+      HOST: "127.0.0.1"

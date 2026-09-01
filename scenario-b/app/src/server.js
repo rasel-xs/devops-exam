@@ -248,9 +248,12 @@ function start() {
   // 28d: the port is published, the container is running, and every connection
   // from the host is refused because the listener is on the container's own
   // loopback interface, which the published port never reaches.
-  const server = app.listen(PORT, '0.0.0.0', () => {
+  // B2 task 28d causes the "published but refused" failure by setting
+  // HOST=127.0.0.1. Default stays 0.0.0.0 -- see the comment above.
+  const HOST = process.env.HOST || '0.0.0.0';
+  const server = app.listen(PORT, HOST, () => {
     console.log(JSON.stringify({
-      level: 'info', msg: 'listening', port: PORT,
+      level: 'info', msg: 'listening', host: HOST, port: PORT,
       version: APP_VERSION, host: os.hostname(), pid: process.pid,
     }));
   });

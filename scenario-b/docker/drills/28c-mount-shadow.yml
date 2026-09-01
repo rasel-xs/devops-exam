@@ -1,0 +1,25 @@
+# 28c -- volume mounted, app sees an empty directory.
+#   mkdir -p docker/drills/empty-folder
+#   docker compose -f docker/docker-compose.yml -f docker/drills/28c-mount-shadow.yml up -d app
+#   docker compose logs app          # Error: Cannot find module 'express'
+#   docker compose exec app ls -la /app/node_modules   # empty
+#
+# A BIND MOUNT replaces whatever the image had at that path. It does not merge,
+# it does not overlay -- the host directory is mounted over the top and the
+# image's contents at that path become unreachable for the life of the
+# container. They are still in the image; they are just shadowed.
+#
+# NAMED VOLUMES behave differently, and this is the part worth knowing: when a
+# named volume is EMPTY AND NEW, Docker COPIES the image's contents at that
+# path into the volume the first time it is used, then mounts it. So
+# `- node_modules:/app/node_modules` appears to work. But that copy happens
+# exactly once: after the first run the volume has its own contents and a
+# rebuilt image with updated dependencies is ignored, which is the classic
+# "I added a package, rebuilt, and it still says module not found".
+#
+# Bind mounts never do the copy -- only named volumes, only when empty, and
+# never for a bind mount even if the host directory is empty.
+services:
+  app:
+    volumes:
+      - ./drills/empty-folder:/app/node_modules

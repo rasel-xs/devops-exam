@@ -1,0 +1,27 @@
+# 28b -- the app cannot reach the DB by service name, but can by IP.
+#   docker compose -f docker/docker-compose.yml -f docker/drills/28b-dns.yml up -d
+#   docker compose exec app getent hosts postgres     # fails
+#   docker compose exec app ping -c1 <postgres-ip>    # works
+#
+# The app is put on its own network that postgres is not attached to. Docker's
+# embedded DNS resolver (127.0.0.11 inside every container) only answers for
+# containers sharing a USER-DEFINED network. Different network -> the name does
+# not resolve at all, while the IP still routes if the host can forward between
+# the bridges.
+#
+# The other half of this trap: the legacy default `bridge` network has NO DNS
+# service discovery whatsoever. Anything started with plain `docker run` and no
+# --network lands there, so `docker run myapp` next to a compose stack can never
+# resolve `postgres` no matter what.
+services:
+  app:
+    networks:
+      - isolated
+    # `!reset` needs Compose v2.24+. If your Compose is older, use the
+    # plain-docker version instead, which shows the same thing more bluntly:
+    #   docker run --rm --name lonely notes-api:multi \
+    #     sh -c 'getent hosts postgres || echo "no DNS on the default bridge"'
+    depends_on: !reset []
+networks:
+  isolated:
+    driver: bridge

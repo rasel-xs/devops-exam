@@ -1,0 +1,27 @@
+# 28a -- container exits with code 137.
+#   docker compose -f docker/docker-compose.yml -f docker/drills/28a-oom.yml up -d app
+#   docker run --memory=50m --rm python:3-alpine python -c "x=[0]*100000000"   # minimal repro
+#
+# 50 MB is below what Node's heap plus V8 itself needs once the app allocates,
+# so the kernel's OOM killer sends SIGKILL.
+#
+# 137 = 128 + 9. The 128 says "terminated by a signal", the 9 is SIGKILL.
+# Compare 143 = 128 + 15 = SIGTERM, which means something asked it to stop
+# politely (a `docker stop`, or a Swarm rolling update). Telling those two apart
+# is the whole diagnosis: 143 is usually normal, 137 almost never is.
+#
+# 137 alone is not proof of OOM -- `docker kill` also produces 137. The thing
+# that distinguishes them is State.OOMKilled.
+services:
+  app:
+    # `deploy.resources` is honoured by `docker compose up` on Compose v2 and by
+    # Swarm. On older Compose v1 it was silently IGNORED outside Swarm, which is
+    # why so many people believe their memory limit "does not work".
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+    environment:
+      # Forces the allocation rather than waiting for organic memory growth.
+      NODE_OPTIONS: "--max-old-space-size=512"
+    command: ["node", "-e", "const a=[]; setInterval(()=>a.push(Buffer.alloc(10*1024*1024)),50)"]
