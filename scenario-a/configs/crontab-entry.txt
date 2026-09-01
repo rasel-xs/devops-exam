@@ -1,7 +1,7 @@
 # A3 task 11 -- install with `crontab -e` as root, or:
-#   sudo cp healthcheck.sh /usr/local/bin/ && sudo chmod 755 /usr/local/bin/healthcheck.sh
-#   sudo mkdir -p /etc/healthcheck && sudo cp checks.conf /etc/healthcheck/
-#   sudo touch /var/log/healthcheck.log && sudo chmod 640 /var/log/healthcheck.log
+#   sudo cp healthcheck.sh /usr/local/bin/ && sudo chmod 755 /usr/local/bin/abdur-healthcheck.sh
+#   sudo mkdir -p /etc/abdur-healthcheck && sudo cp checks.conf /etc/abdur-healthcheck/
+#   sudo touch /var/log/abdur-healthcheck.log && sudo chmod 640 /var/log/abdur-healthcheck.log
 #   sudo crontab -l 2>/dev/null | cat - crontab-entry.txt | sudo crontab -
 #
 # cron runs with a near-empty environment: PATH is normally just
@@ -12,11 +12,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 SHELL=/bin/bash
 
 # stdout goes to /dev/null because the script already writes the detail to
-# /var/log/healthcheck.log; stderr is kept so cron mails real breakage.
-*/5 * * * * /usr/local/bin/healthcheck.sh /etc/healthcheck/checks.conf >/dev/null
+# /var/log/abdur-healthcheck.log; stderr is kept so cron mails real breakage.
+*/5 * * * * /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/checks.conf >/dev/null
 
 # To prove the flock guard for task 9 requirement 7, run this and watch the
 # second copy exit 0 immediately while the first is still sleeping:
-#   /usr/local/bin/healthcheck.sh /etc/healthcheck/slow.conf & sleep 1; \
-#   /usr/local/bin/healthcheck.sh /etc/healthcheck/checks.conf; echo "second exit=$?"
-#   grep 'still running' /var/log/healthcheck.log
+#   /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/slow.conf & sleep 1; \
+#   /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/checks.conf; echo "second exit=$?"
+#   grep 'still running' /var/log/abdur-healthcheck.log

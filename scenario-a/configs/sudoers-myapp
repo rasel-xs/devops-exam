@@ -1,13 +1,13 @@
-# /etc/sudoers.d/myapp   (install with: install -m 0440 -o root -g root)
-# Validate before trusting it:  visudo -cf /etc/sudoers.d/myapp
+# /etc/sudoers.d/abdur-myapp   (install with: install -m 0440 -o root -g root)
+# Validate before trusting it:  visudo -cf /etc/sudoers.d/abdur-myapp
 #
-# A1 task 4: alice and bob must be able to restart the app service and nothing
+# A1 task 4: abdur_alice and abdur_bob must be able to restart the app service and nothing
 # else. Deliberately NOT used here:
 #
-#   %devs ALL=(ALL) NOPASSWD: ALL                  -- full root, obviously wrong
-#   %devs ALL=(root) NOPASSWD: /usr/bin/systemctl  -- lets them `systemctl edit
+#   %abdur_devs ALL=(ALL) NOPASSWD: ALL                  -- full root, obviously wrong
+#   %abdur_devs ALL=(root) NOPASSWD: /usr/bin/systemctl  -- lets them `systemctl edit
 #                                                     anything`, or restart sshd
-#   %devs ALL=(root) NOPASSWD: /usr/bin/systemctl restart *
+#   %abdur_devs ALL=(root) NOPASSWD: /usr/bin/systemctl restart *
 #                                                  -- the wildcard matches
 #                                                     `restart sshd`, and with
 #                                                     some subcommands it can be
@@ -17,25 +17,25 @@
 # Ubuntu (/usr/bin is the real one, /bin is a symlink; sudo matches the path as
 # typed, so both are listed).
 
-Cmnd_Alias MYAPP_CTL = /usr/bin/systemctl restart myapp,         \
-                       /usr/bin/systemctl restart myapp.service, \
-                       /usr/bin/systemctl start   myapp,         \
-                       /usr/bin/systemctl start   myapp.service, \
-                       /usr/bin/systemctl stop    myapp,         \
-                       /usr/bin/systemctl stop    myapp.service, \
-                       /usr/bin/systemctl status  myapp,         \
-                       /usr/bin/systemctl status  myapp.service, \
-                       /bin/systemctl restart myapp,             \
-                       /bin/systemctl restart myapp.service,     \
-                       /bin/systemctl start   myapp,             \
-                       /bin/systemctl stop    myapp,             \
-                       /bin/systemctl status  myapp
+Cmnd_Alias ABDUR_MYAPP_CTL = /usr/bin/systemctl restart abdur-myapp,         \
+                       /usr/bin/systemctl restart abdur-myapp.service, \
+                       /usr/bin/systemctl start   abdur-myapp,         \
+                       /usr/bin/systemctl start   abdur-myapp.service, \
+                       /usr/bin/systemctl stop    abdur-myapp,         \
+                       /usr/bin/systemctl stop    abdur-myapp.service, \
+                       /usr/bin/systemctl status  abdur-myapp,         \
+                       /usr/bin/systemctl status  abdur-myapp.service, \
+                       /bin/systemctl restart abdur-myapp,             \
+                       /bin/systemctl restart abdur-myapp.service,     \
+                       /bin/systemctl start   abdur-myapp,             \
+                       /bin/systemctl stop    abdur-myapp,             \
+                       /bin/systemctl status  abdur-myapp
 
-# Reading the service journal is read-only and useful; -u is pinned to myapp.
-Cmnd_Alias MYAPP_LOG = /usr/bin/journalctl -u myapp, \
-                       /usr/bin/journalctl -u myapp *
+# Reading the service journal is read-only and useful; -u is pinned to abdur-myapp.
+Cmnd_Alias ABDUR_MYAPP_LOG = /usr/bin/journalctl -u abdur-myapp, \
+                       /usr/bin/journalctl -u abdur-myapp *
 
-%devs ALL=(root) NOPASSWD: MYAPP_CTL, MYAPP_LOG
+%abdur_devs ALL=(root) NOPASSWD: ABDUR_MYAPP_CTL, ABDUR_MYAPP_LOG
 
-# carol is a member of devs as well, so she inherits the rule above.
-# dan is in `auditor` only and appears nowhere here: sudo will refuse him.
+# abdur_carol is a member of abdur_devs as well, so she inherits the rule above.
+# abdur_dan is in `abdur_auditor` only and appears nowhere here: sudo will refuse him.

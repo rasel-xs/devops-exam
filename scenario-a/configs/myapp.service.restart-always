@@ -1,13 +1,13 @@
 # A4 task 13, second half: the SAME unit with Restart=always and NO start
-# limit. Install over the top of myapp.service, `daemon-reload`, then run the
+# limit. Install over the top of abdur-myapp.service, `daemon-reload`, then run the
 # crash loop again and watch it restart for ever.
 #
-#   sudo cp myapp.service.restart-always /etc/systemd/system/myapp.service
-#   sudo systemctl daemon-reload && sudo systemctl restart myapp
+#   sudo cp myapp.service.restart-always /etc/systemd/system/abdur-myapp.service
+#   sudo systemctl daemon-reload && sudo systemctl restart abdur-myapp
 #
 # Restore the limited version afterwards.
 [Unit]
-Description=myapp demo service -- RESTART=ALWAYS VARIANT (token: REPLACE_WITH_EXAM_TOKEN)
+Description=abdur-myapp demo service -- RESTART=ALWAYS VARIANT (token: root-vmi3536696-1788282556-1536d427)
 Wants=network-online.target
 After=network-online.target postgresql.service
 # StartLimitBurst=0 disables the rate limiter entirely. Simply deleting the two
@@ -18,20 +18,20 @@ StartLimitBurst=0
 
 [Service]
 Type=simple
-User=myappuser
-Group=myappuser
-WorkingDirectory=/srv/app/src
+User=abdur_myappuser
+Group=abdur_myappuser
+WorkingDirectory=/srv/abdur/app/src
 Environment=NODE_ENV=production
-Environment=PORT=3000
-ExecStart=/usr/bin/node /srv/app/src/server.js
+Environment=PORT=3100
+ExecStart=/usr/bin/node /srv/abdur/app/src/server.js
 Restart=always
 RestartSec=1
-SyslogIdentifier=myapp
+SyslogIdentifier=abdur-myapp
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/srv/app/logs
+ReadWritePaths=/srv/abdur/app/logs
 
 [Install]
 WantedBy=multi-user.target

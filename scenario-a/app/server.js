@@ -13,7 +13,7 @@
 const http = require('http');
 const os = require('os');
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '3100', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const HOSTNAME = os.hostname();
 
@@ -80,7 +80,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`myapp listening on ${HOST}:${PORT} as ${HOSTNAME} (pid ${process.pid})`);
+  console.log(`abdur-myapp listening on ${HOST}:${PORT} as ${HOSTNAME} (pid ${process.pid})`);
 });
 
 // Without this, systemctl stop waits for TimeoutStopSec then SIGKILLs us.

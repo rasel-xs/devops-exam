@@ -1,10 +1,10 @@
-# /etc/systemd/system/myapp.service
+# /etc/systemd/system/abdur-myapp.service
 #
-#   sudo cp myapp.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now myapp
+#   sudo cp abdur-myapp.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now abdur-myapp
 #
 [Unit]
-Description=myapp demo service (exam token: REPLACE_WITH_EXAM_TOKEN)
+Description=abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)
 Documentation=https://github.com/REPLACE_WITH_GH_USER/devops-exam
 
 # network.target only means "the network stack has been configured", which is
@@ -34,14 +34,14 @@ StartLimitBurst=5
 Type=simple
 
 # A dedicated system account with no shell and no home.
-#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin myappuser
-User=myappuser
-Group=myappuser
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin abdur_myappuser
+User=abdur_myappuser
+Group=abdur_myappuser
 
-WorkingDirectory=/srv/app/src
+WorkingDirectory=/srv/abdur/app/src
 Environment=NODE_ENV=production
-Environment=PORT=3000
-ExecStart=/usr/bin/node /srv/app/src/server.js
+Environment=PORT=3100
+ExecStart=/usr/bin/node /srv/abdur/app/src/server.js
 
 Restart=on-failure
 # 1s rather than the 100ms default so six crashes take ~6s, not milliseconds,
@@ -52,8 +52,8 @@ RestartSec=1
 KillSignal=SIGTERM
 TimeoutStopSec=10
 
-# A4 task 12 requirement 4 -- lets me do `journalctl -t myapp` as well as -u.
-SyslogIdentifier=myapp
+# A4 task 12 requirement 4 -- lets me do `journalctl -t abdur-myapp` as well as -u.
+SyslogIdentifier=abdur-myapp
 StandardOutput=journal
 StandardError=journal
 
@@ -71,7 +71,7 @@ RestrictNamespaces=true
 LockPersonality=true
 # ProtectSystem=strict makes the entire filesystem read-only, so the one path
 # the app legitimately writes has to be named explicitly.
-ReadWritePaths=/srv/app/logs
+ReadWritePaths=/srv/abdur/app/logs
 
 [Install]
 WantedBy=multi-user.target

@@ -8,7 +8,7 @@
 # Capture it as a screenshot, or as a typescript:
 #   script -q -c 'sudo -E bash verify-a1.sh' ../evidence/a1-proof-table.txt
 
-APP=/srv/app
+APP=/srv/abdur/app
 PASS=0; FAIL=0
 
 echo "EXAM_TOKEN: ${EXAM_TOKEN:-<<NOT SET -- run the export first>>}"
@@ -31,31 +31,31 @@ run() {
 }
 
 echo "=================== A1 PROOF TABLE ==================="
-run 1  alice ok     "echo test >> $APP/src/main.js && tail -1 $APP/src/main.js"
-run 2  alice ok     "cat $APP/logs/app.log | tail -1"
-run 3  alice ok     "sudo -n systemctl restart myapp && systemctl is-active myapp"
-run 4  alice denied "cat $APP/secrets/db-password.txt"
-run 5  alice denied "sudo -n apt update"
-run 6  carol ok     "echo x >> $APP/config/app.conf && tail -1 $APP/config/app.conf"
-run 7  carol ok     "cat $APP/secrets/db-password.txt"
-run 8  carol denied "rm -f $APP/backups/backup1.tar"
-run 9  dan   ok     "ls -l $APP/secrets/"
-run 10 dan   denied "cat $APP/secrets/db-password.txt"
-run 11 dan   denied "echo x >> $APP/src/main.js"
-run 12 dan   denied "sudo -n systemctl restart myapp"
+run 1  abdur_alice ok     "echo test >> $APP/src/main.js && tail -1 $APP/src/main.js"
+run 2  abdur_alice ok     "cat $APP/logs/app.log | tail -1"
+run 3  abdur_alice ok     "sudo -n systemctl restart abdur-myapp && systemctl is-active abdur-myapp"
+run 4  abdur_alice denied "cat $APP/secrets/db-password.txt"
+run 5  abdur_alice denied "sudo -n apt update"
+run 6  abdur_carol ok     "echo x >> $APP/config/app.conf && tail -1 $APP/config/app.conf"
+run 7  abdur_carol ok     "cat $APP/secrets/db-password.txt"
+run 8  abdur_carol denied "rm -f $APP/backups/backup1.tar"
+run 9  abdur_dan   ok     "ls -l $APP/secrets/"
+run 10 abdur_dan   denied "cat $APP/secrets/db-password.txt"
+run 11 abdur_dan   denied "echo x >> $APP/src/main.js"
+run 12 abdur_dan   denied "sudo -n systemctl restart abdur-myapp"
 
 echo "======================================================"
 echo "PASS=$PASS FAIL=$FAIL"
 echo
 echo "--- supporting evidence ---"
-echo "\$ sudo -l -U alice"; sudo -l -U alice
+echo "\$ sudo -l -U abdur_alice"; sudo -l -U abdur_alice
 echo
-echo "\$ sudo -l -U dan";   sudo -l -U dan
+echo "\$ sudo -l -U abdur_dan";   sudo -l -U abdur_dan
 echo
 echo "\$ getfacl -p $APP/secrets";            getfacl -p "$APP/secrets"
 echo "\$ getfacl -p $APP/secrets/db-password.txt"; getfacl -p "$APP/secrets/db-password.txt"
 echo "\$ ls -la $APP/backups"; ls -la "$APP/backups"
 echo "\$ lsattr $APP/backups"; lsattr "$APP/backups"
-echo "\$ id alice; id carol; id dan"; id alice; id carol; id dan
+echo "\$ id abdur_alice; id abdur_carol; id abdur_dan"; id abdur_alice; id abdur_carol; id abdur_dan
 
 [ "$FAIL" -eq 0 ]

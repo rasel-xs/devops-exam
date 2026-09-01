@@ -33,32 +33,48 @@ tok() { echo "$EXAM_TOKEN | $(date)"; }
 
 ## 1. Scenario A (needs only the VPS)
 
+> **Shared server.** This box also hosts `ashik` and `badhon`. Unprefixed
+> `alice`/`bob`/`carol`/`dan`, the groups `devs`/`ops`/`auditor` and `/srv/app`
+> already exist and are **not mine**. Everything below is namespaced `abdur`.
+> `setup-users.sh` refuses to run if an unprefixed name creeps back in.
+
+**My allocation:** users/groups `abdur_*`, tree `/srv/abdur/app`, units
+`abdur-myapp*`, ports 3100/3101/3102, nginx 8110, A2 mystery ports 8180/8181,
+log `/var/log/abdur-healthcheck.log`, sudoers `/etc/sudoers.d/abdur-myapp`.
+
 ```bash
-# A1
+# A1 -- users, groups, ACLs, sudoers
 sudo bash scenario-a/configs/setup-users.sh
 tok; sudo -E bash scenario-a/configs/verify-a1.sh | tee scenario-a/evidence/a1-proof-table.txt
 
-# A4 -- app + service first, because A3's checks.conf points at it
-sudo mkdir -p /srv/app/src && sudo cp scenario-a/app/server.js /srv/app/src/
-sudo cp scenario-a/configs/myapp.service scenario-a/configs/myapp@.service /etc/systemd/system/
-sudo cp scenario-a/configs/myapp-watchdog.{service,timer} /etc/systemd/system/
-sudo install -m755 scenario-a/configs/myapp-watchdog.sh /usr/local/bin/
+# A4 -- app + services (do this before A3: checks.conf points at these ports)
+sudo mkdir -p /srv/abdur/app/src
+sudo cp scenario-a/app/server.js /srv/abdur/app/src/
+sudo cp scenario-a/configs/myapp.service          /etc/systemd/system/abdur-myapp.service
+sudo cp scenario-a/configs/myapp@.service         /etc/systemd/system/abdur-myapp@.service
+sudo cp scenario-a/configs/myapp-watchdog.service /etc/systemd/system/abdur-myapp-watchdog.service
+sudo cp scenario-a/configs/myapp-watchdog.timer   /etc/systemd/system/abdur-myapp-watchdog.timer
+sudo install -m755 scenario-a/configs/myapp-watchdog.sh /usr/local/bin/abdur-myapp-watchdog.sh
 sudo systemctl daemon-reload
-sudo systemctl enable --now myapp myapp@3001 myapp@3002 myapp-watchdog.timer
+sudo systemctl enable --now abdur-myapp abdur-myapp@3101 abdur-myapp@3102
 
-# A3
-sudo install -m755 scenario-a/configs/healthcheck.sh /usr/local/bin/
-sudo mkdir -p /etc/healthcheck && sudo cp scenario-a/configs/checks.conf /etc/healthcheck/
-sudo touch /var/log/healthcheck.log
+# A3 -- healthcheck + cron
+sudo install -m755 scenario-a/configs/healthcheck.sh /usr/local/bin/abdur-healthcheck.sh
+sudo mkdir -p /etc/abdur-healthcheck
+sudo cp scenario-a/configs/checks.conf /etc/abdur-healthcheck/
+sudo touch /var/log/abdur-healthcheck.log && sudo chmod 640 /var/log/abdur-healthcheck.log
+# APPEND to root's crontab -- never `crontab <file>`, that would wipe ashik's entries
+sudo crontab -l 2>/dev/null | cat - scenario-a/configs/crontab-entry.txt | sudo crontab -
 
-# A5
-sudo cp scenario-a/configs/nginx-myapp.conf /etc/nginx/sites-available/myapp
-sudo ln -sf /etc/nginx/sites-available/myapp /etc/nginx/sites-enabled/myapp
-sudo rm -f /etc/nginx/sites-enabled/default
+# A5 -- nginx (install if absent; it is shared, so only ADD my conf)
+sudo apt-get update && sudo apt-get install -y nginx
+sudo cp scenario-a/configs/nginx-myapp.conf /etc/nginx/sites-available/abdur-myapp
+sudo ln -sf /etc/nginx/sites-available/abdur-myapp /etc/nginx/sites-enabled/abdur-myapp
+# do NOT remove sites-enabled/default -- not mine
 sudo nginx -t && sudo systemctl reload nginx
 tok; bash scenario-a/configs/a5-tests.sh | tee scenario-a/evidence/a5-tests.txt
 
-# A2 -- do this LAST in scenario A: it deliberately occupies port 8080
+# A2 -- LAST in scenario A: it deliberately occupies port 8180
 ```
 
 ## 2. Scenario B, local first (Docker on the Mac)

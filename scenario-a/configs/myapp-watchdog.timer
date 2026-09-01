@@ -1,10 +1,10 @@
-# /etc/systemd/system/myapp-watchdog.timer
+# /etc/systemd/system/abdur-abdur-myapp-watchdog.timer
 #
-#   sudo systemctl enable --now myapp-watchdog.timer
-#   systemctl list-timers myapp-watchdog.timer
+#   sudo systemctl enable --now abdur-abdur-myapp-watchdog.timer
+#   systemctl list-timers abdur-abdur-myapp-watchdog.timer
 #
 [Unit]
-Description=Probe myapp every 30s and restart it if it stops answering
+Description=Probe abdur-myapp every 30s and restart it if it stops answering
 
 [Timer]
 # Wait for the app to settle after a reboot before the first probe, otherwise
@@ -18,7 +18,7 @@ OnUnitActiveSec=30s
 # and let the CPU idle. On a 30s timer that default lets it drift to a minute
 # or more -- which looks exactly like "my watchdog does not work".
 AccuracySec=1s
-Unit=myapp-watchdog.service
+Unit=abdur-abdur-myapp-watchdog.service
 
 [Install]
 WantedBy=timers.target

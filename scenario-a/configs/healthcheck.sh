@@ -15,8 +15,8 @@
 set -uo pipefail          # NOT -e: a failing check is data, not a crash
 
 CONFIG="${1:-./checks.conf}"
-LOGFILE="${HEALTHCHECK_LOG:-/var/log/healthcheck.log}"
-LOCKFILE="${HEALTHCHECK_LOCK:-/var/lock/healthcheck.lock}"
+LOGFILE="${HEALTHCHECK_LOG:-/var/log/abdur-healthcheck.log}"
+LOCKFILE="${HEALTHCHECK_LOCK:-/var/lock/abdur-healthcheck.lock}"
 CURL_TIMEOUT=3
 DISK_THRESHOLD=80
 HOSTNAME_S=$(hostname -s 2>/dev/null || hostname)

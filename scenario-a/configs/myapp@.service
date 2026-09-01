@@ -1,12 +1,12 @@
-# /etc/systemd/system/myapp@.service -- template unit, one instance per port.
+# /etc/systemd/system/abdur-abdur-myapp@.service -- template unit, one instance per port.
 #
-#   sudo systemctl enable --now myapp@3001 myapp@3002
+#   sudo systemctl enable --now abdur-abdur-myapp@3101 abdur-abdur-myapp@3102
 #
-# %i is the bit after the @, so `myapp@3001` starts with PORT=3001. Two copies
+# %i is the bit after the @, so `abdur-abdur-myapp@3101` starts with PORT=3101. Two copies
 # of the same app on two ports for the nginx load-balancing task (A5), without
 # two nearly-identical unit files to keep in sync.
 [Unit]
-Description=myapp backend on port %i (exam token: REPLACE_WITH_EXAM_TOKEN)
+Description=abdur-myapp backend on port %i (exam token: root-vmi3536696-1788282556-1536d427)
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=60
@@ -14,21 +14,21 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=myappuser
-Group=myappuser
-WorkingDirectory=/srv/app/src
+User=abdur_myappuser
+Group=abdur_myappuser
+WorkingDirectory=/srv/abdur/app/src
 Environment=NODE_ENV=production
 Environment=PORT=%i
-ExecStart=/usr/bin/node /srv/app/src/server.js
+ExecStart=/usr/bin/node /srv/abdur/app/src/server.js
 Restart=on-failure
 RestartSec=1
-# %i in the identifier so `journalctl -t myapp-3001` filters one backend.
-SyslogIdentifier=myapp-%i
+# %i in the identifier so `journalctl -t abdur-myapp-3101` filters one backend.
+SyslogIdentifier=abdur-myapp-%i
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/srv/app/logs
+ReadWritePaths=/srv/abdur/app/logs
 
 [Install]
 WantedBy=multi-user.target

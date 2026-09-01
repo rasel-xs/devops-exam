@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# /usr/local/bin/myapp-watchdog.sh
+# /usr/local/bin/abdur-abdur-myapp-watchdog.sh
 #
 # A4 task 15. The app can be alive-but-dead: it accepts TCP connections and
 # never answers. systemd sees a running process and is perfectly happy, so
@@ -7,8 +7,8 @@
 # asking the kernel whether the process exists.
 set -u
 
-URL="${WATCHDOG_URL:-http://127.0.0.1:3000/healthz}"
-UNIT="${WATCHDOG_UNIT:-myapp}"
+URL="${WATCHDOG_URL:-http://127.0.0.1:3100/healthz}"
+UNIT="${WATCHDOG_UNIT:-abdur-myapp}"
 TIMEOUT="${WATCHDOG_TIMEOUT:-5}"
 
 # -f makes curl exit non-zero on a 4xx/5xx as well as on a transport error, so
@@ -22,9 +22,9 @@ fi
 
 # logger writes to the journal, so the restart decision and the restart itself
 # land in the same timeline you read with journalctl.
-logger -t myapp-watchdog "UNHEALTHY: $URL did not answer within ${TIMEOUT}s -- restarting $UNIT"
+logger -t abdur-abdur-myapp-watchdog "UNHEALTHY: $URL did not answer within ${TIMEOUT}s -- restarting $UNIT"
 echo "unhealthy: $URL did not answer within ${TIMEOUT}s -- restarting $UNIT"
 systemctl restart "$UNIT"
 rc=$?
-logger -t myapp-watchdog "restart of $UNIT returned $rc"
+logger -t abdur-abdur-myapp-watchdog "restart of $UNIT returned $rc"
 exit "$rc"
