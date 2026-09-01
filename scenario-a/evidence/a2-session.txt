@@ -1,0 +1,129 @@
+Script started on 2026-09-01 21:24:03+02:00 [COMMAND="bash configs/a2-tests.sh" TERM="xterm-256color" TTY="/dev/pts/7" COLUMNS="99" LINES="36"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Tue Sep  1 21:24:03 CEST 2026
+host      : vmi3536696
+
+============ SETUP: creating the mystery ============
+State  Recv-Q Send-Q   Local Address:Port   Peer Address:Port Process                              
+LISTEN 0      5              0.0.0.0:8180        0.0.0.0:*     users:(("python3",pid=104146,fd=3)) 
+LISTEN 0      5              0.0.0.0:8181        0.0.0.0:*     users:(("python3",pid=104150,fd=3)) 
+
+============ TASK 5: identify what holds port 8180 ============
+1. PID          : 104146
+2. Binary path  : /usr/bin/python3.12
+3. User         : root
+4. Start time   : Tue Sep  1 21:24:04 2026
+5. Command line : python3 -m http.server 8180 
+
+--- ss ---
+State      Recv-Q     Send-Q         Local Address:Port          Peer Address:Port     Process     
+LISTEN     0          5                    0.0.0.0:8180               0.0.0.0:*         users:(("python3",pid=104146,fd=3))
+--- lsof ---
+COMMAND    PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+python3 104146 root    3u  IPv4 917334      0t0  TCP *:8180 (LISTEN)
+
+============ TASK 6: same commands, with and without privilege ============
+### WITHOUT sudo -- as abdur_alice ###
+--- ss -lptn ---
+State      Recv-Q     Send-Q         Local Address:Port          Peer Address:Port     Process     
+LISTEN     0          5                    0.0.0.0:8180               0.0.0.0:*                    
+LISTEN     0          5                    0.0.0.0:8181               0.0.0.0:*         users:(("python3",pid=104150,fd=3))
+--- lsof -i :8180 ---
+  (exit code 1)
+
+### WITH sudo -- as root ###
+--- ss -lptn ---
+State  Recv-Q Send-Q   Local Address:Port   Peer Address:Port Process                              
+LISTEN 0      5              0.0.0.0:8180        0.0.0.0:*     users:(("python3",pid=104146,fd=3)) 
+LISTEN 0      5              0.0.0.0:8181        0.0.0.0:*     users:(("python3",pid=104150,fd=3)) 
+--- lsof -i :8180 ---
+COMMAND    PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+python3 104146 root    3u  IPv4 917334      0t0  TCP *:8180 (LISTEN)
+
+### WHY the difference ###
+ss has to map socket inode -> process by walking /proc/<pid>/fd/.
+--- permissions on root's fd directory ---
+dr-x------ 2 root root 4 Sep  1 21:24 /proc/104146/fd
+--- can abdur_alice open it? ---
+ls: cannot open directory '/proc/104146/fd': Permission denied
+--- but the socket table itself is world readable ---
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode                                                     
+   0: 00000000:1B9E 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1010        0 899628 1 0000000000000000 100 0 0 10 0                    
+   1: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 908633 1 0000000000000000 100 0 0 10 0                    
+
+============ TASK 7a: manual, systemd, or cron? ============
+--- cgroup of the mystery process ---
+0::/user.slice/user-0.slice/session-985.scope
+--- cgroup of a known systemd service, for comparison ---
+0::/system.slice/abdur-myapp.service
+
+--- parent process ---
+ 104146  104140 root     python3 -m http.server 8180
+  parent -> bash configs/a2-tests.sh
+
+--- what does systemd think this PID belongs to? ---
+● session-985.scope - Session 985 of User root
+     Loaded: loaded (/run/systemd/transient/session-985.scope; transient)
+  Transient: yes
+     Active: active (running) since Tue 2026-09-01 19:25:17 CEST; 1h 58min ago
+
+--- anything in cron? ---
+  nothing in cron
+
+VERDICT: user.slice + a bash parent + no unit file = started by hand.
+
+============ TASK 7b: what kill -9 does to a systemd-managed process ============
+PID before kill : 103465
+>>> kill -9 103465
+PID after 3s    : 104202
+unit state      : active
+--- what the journal recorded ---
+Sep 01 21:05:17 vmi3536696 abdur-myapp[103465]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 103465)
+Sep 01 21:24:07 vmi3536696 systemd[1]: abdur-myapp.service: Main process exited, code=killed, status=9/KILL
+Sep 01 21:24:07 vmi3536696 systemd[1]: abdur-myapp.service: Failed with result 'signal'.
+Sep 01 21:24:08 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 2.
+Sep 01 21:24:08 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 01 21:24:09 vmi3536696 abdur-myapp[104202]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 104202)
+
+============ TASK 7c: killing the manual process the right way ============
+--- before ---
+State      Recv-Q     Send-Q         Local Address:Port          Peer Address:Port     Process     
+LISTEN     0          5                    0.0.0.0:8180               0.0.0.0:*         users:(("python3",pid=104146,fd=3))
+>>> kill 104146    (SIGTERM, not -9: the process gets to clean up)
+--- after ---
+  port 8180 is now FREE
+
+============ TASK 8: set up the two failure modes, then test from the laptop ============
+--- firewall state ---
+Status: inactive
+Chain INPUT (policy ACCEPT)
+num  target     prot opt source               destination         
+1    DROP       6    --  0.0.0.0/0            0.0.0.0/0            tcp dpt:8080
+  NOTE: the DROP on 8080 is another student's rule on this shared box.
+        I did not add it and will not remove it -- it conveniently
+        provides the 'timed out' case to compare against.
+
+--- bind addresses: this column is the whole answer ---
+LISTEN 0      5            0.0.0.0:8180      0.0.0.0:*    users:(("python3",pid=104222,fd=3))                     
+LISTEN 0      5          127.0.0.1:8182      0.0.0.0:*    users:(("python3",pid=104223,fd=3))                     
+
+--- from INSIDE the server, both work ---
+  8180 -> 200
+  8182 -> 200
+
+Now run this ON THE LAPTOP (evidence/a2-task8-from-laptop.txt):
+    export EXAM_TOKEN="root-vmi3536696-1788282556-1536d427"
+    echo "$EXAM_TOKEN | $(date)"
+    for p in 8180 8182 8080 9999; do
+      echo "======== port $p ========"
+      curl -sS -m 6 -o /dev/null \
+           -w "  OK: http_code=%{http_code} time=%{time_total}s\n" \
+           "http://169.58.246.108:$p/" || echo "  curl exit code = $?"
+    done
+
+Afterwards, clean up with:
+    pkill -f 'http.server 8180'; pkill -f 'http.server 8182'
+
+============ END ============
+
+Script done on 2026-09-01 21:24:16+02:00 [COMMAND_EXIT_CODE="0"]
