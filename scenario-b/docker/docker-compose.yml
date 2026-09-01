@@ -1,0 +1,98 @@
+# B2 task 26, PART 2 -- the working stack. Four services: app, postgres,
+# prometheus, grafana.
+#
+#   docker compose -f docker/docker-compose.yml up -d --build
+#   docker compose -f docker/docker-compose.yml exec app node db/seed.js
+#
+# exam token: REPLACE_WITH_EXAM_TOKEN
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: notes
+      POSTGRES_DB: notes
+    volumes:
+      # A NAMED volume: it survives `down`, and is destroyed by `down -v`.
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"      # bound to loopback: not exposed to the internet
+    healthcheck:
+      # `pg_isready -U notes -d notes` and not a bare `pg_isready`: during
+      # initdb, Postgres starts a TEMPORARY server on a unix socket to create
+      # the role and database, and a bare pg_isready answers "accepting
+      # connections" against THAT. Naming the user and database means the check
+      # only passes once the real server can serve the real credentials.
+      test: ["CMD-SHELL", "pg_isready -U notes -d notes -h 127.0.0.1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+    image: notes-api:multi
+    environment:
+      DATABASE_URL: postgres://notes:notes@postgres:5432/notes
+      PORT: "3000"
+      APP_VERSION: "v1"
+      PG_POOL_MAX: "10"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        # THE FIX. `service_healthy` waits for postgres's own healthcheck to
+        # pass, not merely for its container to start. Compose file format 3.9+
+        # / Compose v2.
+        condition: service_healthy
+    # Migrations run first, then the server. Belt and braces: migrate.js also
+    # retries for 60s, because in Swarm (B4) there is no depends_on at all and
+    # the app has to be able to look after itself.
+    command: ["sh", "-c", "node db/migrate.js && node src/server.js"]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - promdata:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      # Needed for Grafana annotations and for reloading rules without a restart.
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Lets the dashboard JSON be provisioned read-write so panels can be
+      # edited in the UI and re-exported.
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "5s"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      # 3001 on the host because the app already has 3000.
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:

@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# B1 task 22 -- the NAIVE single-stage build, for size comparison only.
+# Never deploy this.
+#
+#   docker build -f docker/Dockerfile.naive -t notes-api:naive app/
+#
+# Everything wrong with it, on purpose:
+#   * full Debian base (~350MB before a single dependency)
+#   * dev dependencies and the whole npm cache baked in
+#   * build toolchain left in the final image
+#   * runs as root
+#   * no healthcheck
+#   * COPY . . before npm install, so every source edit re-downloads everything
+FROM node:20-bookworm
+
+WORKDIR /app
+
+# Build tools that the runtime has no use for whatsoever.
+RUN apt-get update && apt-get install -y \
+      build-essential python3 git curl vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Source first: guarantees a cache miss on npm install for every code change.
+COPY . .
+
+# `npm install` (not ci), WITH devDependencies, cache retained.
+RUN npm install
+
+EXPOSE 3000
+CMD ["node", "src/server.js"]

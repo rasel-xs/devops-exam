@@ -1,0 +1,27 @@
+# exam token: REPLACE_WITH_EXAM_TOKEN
+global:
+  # 5s rather than the 15s default: this exam's load runs for minutes, not
+  # hours, and a 15s interval gives too few points for a legible p95. In
+  # production 15s is the right answer -- scrape interval is a storage cost.
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    env: exam
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+scrape_configs:
+  - job_name: notes-api
+    metrics_path: /metrics
+    static_configs:
+      # `app:3000` -- the compose SERVICE NAME, resolved by Docker's embedded
+      # DNS on the user-defined network compose creates. localhost:3000 would
+      # be Prometheus's own container and resolve to nothing (B2 task 28b).
+      - targets: ['app:3000']
+        labels:
+          service: notes-api
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

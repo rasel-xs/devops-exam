@@ -1,0 +1,44 @@
+# B2 task 26, PART 1 -- the version that PROVES `depends_on` is not enough.
+#
+#   docker compose -f docker/docker-compose.broken-depends.yml down -v
+#   docker compose -f docker/docker-compose.broken-depends.yml up
+#
+# Run it on a FRESH volume (that is what `down -v` above is for). On a fresh
+# volume Postgres has to initdb, create the role and the database and restart
+# its internal server before it will accept a single connection -- several
+# seconds. `depends_on` waits only for the container to be CREATED and STARTED,
+# not for the process inside it to be ready, so the app connects immediately,
+# gets ECONNREFUSED, and exits.
+#
+# On a second run it often "works", because the volume is already initialised
+# and Postgres is ready in well under a second. That intermittency is exactly
+# why this is a bad pattern: it passes on your laptop and fails on a cold
+# deploy.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: notes
+      POSTGRES_DB: notes
+    volumes:
+      - pgdata_broken:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+    environment:
+      DATABASE_URL: postgres://notes:notes@postgres:5432/notes
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    # The whole problem, in one line.
+    depends_on:
+      - postgres
+    # No retry loop either -- migrate.js normally retries, so this variant runs
+    # the server directly to make the failure immediate and obvious.
+    command: ["node", "src/server.js"]
+
+volumes:
+  pgdata_broken:

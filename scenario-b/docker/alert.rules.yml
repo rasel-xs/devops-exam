@@ -1,0 +1,37 @@
+# Prometheus-side alerting rules. B3 task 33 asks for a GRAFANA alert (created
+# in the Grafana UI and exported into ../grafana/); these are the same
+# conditions expressed as recording/alerting rules, which is what I would
+# actually run in production because they survive Grafana being down.
+groups:
+  - name: notes-api
+    rules:
+      - alert: HighP95Latency
+        # Thresholds must come from your own Panel A baseline -- see ANSWERS.md.
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, route) (rate(http_request_duration_seconds_bucket[1m]))
+          ) > 1.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 latency on {{ $labels.route }} is {{ $value | printf \"%.2f\" }}s"
+
+      - alert: HighErrorRate
+        expr: |
+          sum by (route) (rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum by (route) (rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.route }} is returning over 5% 5xx"
+
+      - alert: AppDown
+        expr: up{job="notes-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape notes-api"
