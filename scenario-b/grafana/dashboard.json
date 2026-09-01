@@ -1,0 +1,753 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PROM_EXAM"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "name": "Deploys",
+        "titleFormat": "deploy",
+        "expr": "changes(process_start_time_seconds{job=\"notes-api\"}[1m]) > 0",
+        "step": "10s",
+        "tagKeys": "job",
+        "type": "tags"
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "A \u2014 Top 5 slowest endpoints by p95 latency",
+      "description": "p95 = 95% of requests were faster than this. Preferred over a mean because an average is dragged down by thousands of fast /healthz calls and hides the tail that users actually complain about. histogram_quantile needs the rate of the _bucket series summed BY le, and le must survive the sum() or the quantile is meaningless.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "topk(5, histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[$__rate_interval]))))",
+          "legendFormat": "{{route}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "B \u2014 Total time consumed by endpoint (seconds of work per second)",
+      "description": "The most important panel here. A is 'slowest per request'; this is 'where the server's time actually goes' = latency x call rate. The _sum series already accumulates total seconds spent, so rate(_sum) is seconds of work per second \u2014 a value of 3 means this route occupies 3 seconds of processing for every wall-clock second, i.e. it needs 3 concurrent workers just to keep up.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "topk(5, sum by (route) (rate(http_request_duration_seconds_sum[$__rate_interval])))",
+          "legendFormat": "{{route}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "C \u2014 DB query duration: mean vs p99 by query",
+      "description": "Both on one panel so the GAP is visible. A mean close to the p99 means consistent work; a mean of 2ms with a p99 of 400ms means most calls are fine and a small share are pathological \u2014 usually a cold cache, a lock, or one tenant with far more rows.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "sum by (query_name) (rate(db_query_duration_seconds_sum[$__rate_interval])) / sum by (query_name) (rate(db_query_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "mean {{query_name}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, query_name) (rate(db_query_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p99 {{query_name}}",
+          "refId": "B",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "D \u2014 Slowest query and how often it runs",
+      "description": "Two instant queries in a table: p99 duration per query_name, and calls per second. The slowest query is not automatically the one to fix \u2014 multiply the two columns to get total cost, which is the table version of panel B.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, query_name) (rate(db_query_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p99",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "sum by (query_name) (rate(db_query_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "calls/sec",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "query_name",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Value #A": "p99 (s)",
+              "Value #B": "calls/sec",
+              "query_name": "query"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "p99 (s)",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "E \u2014 N+1 detector: mean DB queries per request",
+      "description": "GET /api/notes with limit=20 sits at ~21 while every other route sits at 1-2. That single number IS the N+1 problem: one query for the notes plus one per note for its tags. Mean rather than p95 because the point is the shape of the route, not its tail.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "sum by (route) (rate(db_queries_per_request_sum[$__rate_interval])) / sum by (route) (rate(db_queries_per_request_count[$__rate_interval]))",
+          "legendFormat": "{{route}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "F \u2014 Harmful queries per second (slower than 50ms)",
+      "description": "count(all) minus count(<=le) gives the rate of queries falling in the tail above a bucket boundary. The threshold MUST be an existing bucket edge \u2014 picking 60ms silently returns nothing because no such bucket exists. Justification for 50ms is in ANSWERS.md and comes from panel C, not from the number being round.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "sum by (query_name) (rate(db_query_duration_seconds_count[$__rate_interval])) - sum by (query_name) (rate(db_query_duration_seconds_bucket{le=\"0.05\"}[$__rate_interval]))",
+          "legendFormat": "{{query_name}} > 50ms",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "G \u2014 Rows returned per query (p50 / p99)",
+      "description": "Exposes Problem 4, the unbounded limit. A p99 in the thousands on notes_list means a client is asking for ?limit=5000 and being given it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le, query_name) (rate(db_rows_returned_bucket[$__rate_interval])))",
+          "legendFormat": "p50 {{query_name}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, query_name) (rate(db_rows_returned_bucket[$__rate_interval])))",
+          "legendFormat": "p99 {{query_name}}",
+          "refId": "B",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "H \u2014 Error rate and p95 latency by tenant",
+      "description": "The multi-tenant view: the same service can be healthy for four tenants and unusable for the fifth. Whether that is data volume or request shape is answered in ANSWERS.md \u2014 and the two are separable because acme has both more rows AND heavier requests, deliberately.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, tenant) (rate(http_request_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95 {{tenant}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "sum by (tenant) (rate(http_requests_total{status=~\"5..\"}[$__rate_interval])) / sum by (tenant) (rate(http_requests_total[$__rate_interval]))",
+          "legendFormat": "error rate {{tenant}}",
+          "refId": "B",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "I \u2014 Saturation: in-flight requests vs p95 latency",
+      "description": "Concurrency on the left axis, latency on the right. If latency rises at the same instant as concurrency, the bottleneck is per-request work. If latency lags concurrency, requests are QUEUEING behind a fixed-size resource \u2014 here, the 10-connection Postgres pool.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROM_EXAM"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "http_requests_in_flight",
+          "legendFormat": "in-flight",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PROM_EXAM"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95 latency (all routes)",
+          "refId": "B",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95 latency (all routes)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": [
+    "exam",
+    "notes-api"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "route",
+        "label": "route",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PROM_EXAM"
+        },
+        "query": {
+          "query": "label_values(http_requests_total, route)",
+          "refId": "A"
+        },
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      },
+      {
+        "name": "tenant",
+        "label": "tenant",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PROM_EXAM"
+        },
+        "query": {
+          "query": "label_values(http_requests_total, tenant)",
+          "refId": "A"
+        },
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "exam-REPLACE_WITH_EXAM_TOKEN",
+  "uid": "notes-api-exam",
+  "version": 1,
+  "weekStart": ""
+}

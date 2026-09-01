@@ -1,0 +1,19 @@
+# Provisioned so the data source exists on first boot with a FIXED uid. The
+# dashboard JSON references that uid; without pinning it, Grafana generates a
+# random one and an imported dashboard shows "Datasource not found" on every
+# panel -- the most common reason an exported dashboard looks empty elsewhere.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: PROM_EXAM
+    access: proxy
+    # Service name on the compose network, not localhost.
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      # Must match prometheus.yml's scrape_interval, otherwise Grafana suggests
+      # $__rate_interval values that are shorter than the scrape interval and
+      # rate() silently returns nothing.
+      timeInterval: 5s
+      httpMethod: POST

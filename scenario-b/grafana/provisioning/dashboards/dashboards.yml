@@ -1,0 +1,13 @@
+apiVersion: 1
+providers:
+  - name: exam
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    # allowUiUpdates lets me edit panels in the browser and re-export the JSON,
+    # which is how task 32's dashboard.json is produced.
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
