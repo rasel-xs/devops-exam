@@ -1,0 +1,129 @@
+# B4 -- Docker Swarm stack. exam token: REPLACE_WITH_EXAM_TOKEN
+#
+#   docker swarm init --advertise-addr <server-ip>
+#   docker stack deploy -c docker/stack.yml notes
+#   docker stack services notes
+#
+# The image MUST come from a registry, not a local build: Swarm schedules tasks
+# on nodes, and a node can only run an image it can pull. `build:` is ignored by
+# `docker stack deploy` entirely -- it does not warn, the service just never
+# starts on any node that lacks the image.
+version: "3.9"
+
+services:
+  app:
+    image: ${REGISTRY:-ghcr.io/REPLACE_WITH_GH_USER}/notes-api:${TAG:-v1}
+    environment:
+      DATABASE_URL: postgres://notes:notes@postgres:5432/notes
+      PORT: "3000"
+      APP_VERSION: ${TAG:-v1}
+    ports:
+      # The routing mesh: a request to :3000 on ANY node is load balanced to a
+      # healthy task on any node. `mode: host` would bypass the mesh and bind
+      # the port on the node running the task instead.
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: ingress
+    networks: [notes_net]
+
+    healthcheck:
+      # Repeated here even though the image already has one, because
+      # Swarm's rolling-update logic depends on task health: without a
+      # healthcheck a task counts as "running" the instant the process starts,
+      # and start-first ordering gives you nothing (task 38's answer).
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+    # Give the app time to finish in-flight requests on SIGTERM before SIGKILL.
+    # Must be longer than the app's own drain, or graceful shutdown is theatre.
+    stop_grace_period: 30s
+
+    deploy:
+      replicas: 3
+      mode: replicated
+
+      update_config:
+        # One task at a time, so 2 of 3 are always serving.
+        parallelism: 1
+        delay: 10s
+        # THE zero-downtime setting. Default is stop-first: Swarm kills a task,
+        # THEN starts its replacement, so capacity dips and in-flight requests
+        # are dropped. start-first brings the new task to healthy before
+        # retiring the old one -- it needs spare capacity on the node, which is
+        # the trade.
+        order: start-first
+        # If the update fails, undo it automatically rather than leaving the
+        # service half-migrated.
+        failure_action: rollback
+        # How long a new task must stay healthy before it counts as a success.
+        # Too short and a task that crashes after 5 seconds is called a win.
+        monitor: 20s
+        max_failure_ratio: 0
+
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: pause
+        monitor: 20s
+
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 60s
+
+      resources:
+        # LIMIT = a ceiling enforced by cgroups at runtime. Exceed the memory
+        # limit and the kernel OOM-kills the container (exit 137).
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        # RESERVATION = a scheduling promise. Swarm will only place this task on
+        # a node with this much unclaimed capacity. It does NOT reserve anything
+        # at runtime and does not protect the container from anything -- it
+        # decides WHERE a task may run, not how it behaves once it is running.
+        # Task 39 sets memory here to 8G on a 2GB node so nothing can be placed.
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+
+      placement:
+        constraints:
+          - node.platform.os == linux
+
+      labels:
+        exam.token: "REPLACE_WITH_EXAM_TOKEN"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: notes
+      POSTGRES_DB: notes
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [notes_net]
+    deploy:
+      replicas: 1
+      placement:
+        # Pin the database to the manager. A local volume follows the NODE, not
+        # the task -- if Swarm reschedules this onto another node it comes up
+        # with an empty volume and the data appears to have vanished. Real
+        # answer: run the database outside Swarm, or on shared storage.
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+networks:
+  notes_net:
+    driver: overlay
+    attachable: true
+
+volumes:
+  pgdata:

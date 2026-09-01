@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+# B4 task 38 -- the deliberately broken v3.
+#
+#   docker build -f docker/Dockerfile.v3broken -t $REG/notes-api:v3 app/
+#   docker push $REG/notes-api:v3
+#   docker service update --image $REG/notes-api:v3 notes_app
+#
+# /healthz returns 500, so the container healthcheck never passes, the task
+# never reaches `healthy`, and with failure_action: rollback Swarm gives up and
+# puts v2 back. Broken this way rather than `process.exit(1)` on purpose: a task
+# that exits is caught by the restart policy alone, whereas a task that stays UP
+# but never becomes HEALTHY is only caught because there is a healthcheck --
+# which is the point the task is asking about.
+FROM notes-api:multi
+ENV BREAK_HEALTHZ=1 \
+    APP_VERSION=v3-broken
