@@ -1,0 +1,137 @@
+# exam token: REPLACE_WITH_EXAM_TOKEN
+# B5 task 41 -- the pull request pipeline.
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+
+# Task 46 safeguard #1. Two pushes to the same PR would otherwise run two
+# builds concurrently, waste minutes, and report whichever finished last -- so
+# a green tick could belong to the OLDER commit. cancel-in-progress on a PR is
+# safe because nothing has been deployed yet.
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Task 46 safeguard #2. A hung job holds a runner until GitHub's 6 HOUR
+    # default expires.
+    timeout-minutes: 15
+
+    # The tests talk to a real Postgres rather than a mock, because the bugs
+    # that matter in this app are SQL and tenant scoping, and a mock cannot see
+    # either. Service containers are on the job's network and reachable on
+    # localhost from the runner.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: notes
+          POSTGRES_PASSWORD: notes
+          POSTGRES_DB: notes
+        ports: ['5432:5432']
+        # Without this the job races initdb exactly like B2 task 26.
+        options: >-
+          --health-cmd "pg_isready -U notes -d notes"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Task 42. Caches ~/.npm keyed on the lockfile hash. `npm ci` still
+          # runs, but it installs from the local cache instead of the network.
+          cache: 'npm'
+          cache-dependency-path: scenario-b/app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: scenario-b/app
+        run: npm ci
+
+      - name: Run unit and integration tests
+        working-directory: scenario-b/app
+        env:
+          DATABASE_URL: postgres://notes:notes@localhost:5432/notes
+        run: npm test
+
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: scenario-b/app
+          file: scenario-b/docker/Dockerfile
+          # Load into the local daemon rather than pushing -- a PR from a fork
+          # must never be able to publish an image.
+          load: true
+          push: false
+          tags: notes-api:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The step that earns its keep. An image can build perfectly and still be
+      # unable to start: a typo in CMD, a missing runtime file that .dockerignore
+      # excluded, a native module built for the wrong libc. Only running it finds
+      # that.
+      - name: Start the image and curl /healthz
+        run: |
+          docker run -d --name pr-smoke -p 3000:3000 \
+            -e DATABASE_URL=postgres://nobody@127.0.0.1:5432/none \
+            notes-api:pr-${{ github.event.pull_request.number }}
+
+          # Poll rather than `sleep 10 && curl` -- a fixed sleep is either
+          # flaky or slow, and usually both.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/healthz; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::the container never became healthy"
+          docker logs pr-smoke
+          docker inspect --format='{{json .State}}' pr-smoke
+          exit 1
+
+      - name: Show the container logs on failure
+        if: failure()
+        run: docker logs pr-smoke || true
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f pr-smoke || true
+
+      # Proves the multi-stage build actually dropped root and kept the build
+      # tools out (B1 tasks 21 and 25) on every single PR, rather than once by
+      # hand in a screenshot.
+      - name: Assert the image runs as non-root and holds no secrets
+        run: |
+          IMG=notes-api:pr-${{ github.event.pull_request.number }}
+          USER_IN_IMAGE=$(docker run --rm "$IMG" whoami)
+          echo "image user: $USER_IN_IMAGE"
+          [ "$USER_IN_IMAGE" != "root" ] || { echo "::error::image runs as root"; exit 1; }
+
+          if docker run --rm --entrypoint sh "$IMG" -c 'ls /app/.env' 2>/dev/null; then
+            echo "::error::a .env file is present in the image"; exit 1
+          fi
+          echo "no .env in the image"
