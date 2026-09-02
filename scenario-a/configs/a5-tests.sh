@@ -23,8 +23,8 @@ cat <<'LOOP'
     sleep 0.5
   done | tee ../evidence/a5-failover-loop.txt
   # other terminal:
-  sudo systemctl stop abdur-abdur-myapp@3102   ; sleep 30
-  sudo systemctl start abdur-abdur-myapp@3102
+  sudo systemctl stop abdur-myapp@3102   ; sleep 30
+  sudo systemctl start abdur-myapp@3102
 LOOP
 echo
 

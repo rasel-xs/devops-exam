@@ -1,4 +1,4 @@
-# /etc/systemd/system/abdur-abdur-myapp-watchdog.service
+# /etc/systemd/system/abdur-myapp-watchdog.service
 # Type=oneshot: it runs, it exits, that is the whole life cycle. The .timer is
 # what makes it happen repeatedly -- this unit is never enabled itself.
 [Unit]
@@ -9,8 +9,8 @@ After=abdur-myapp.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/abdur-abdur-myapp-watchdog.sh
+ExecStart=/usr/local/bin/abdur-myapp-watchdog.sh
 # Runs as root because it calls `systemctl restart`. The alternative is a
 # polkit rule; root on a probe this small is the smaller risk.
 User=root
-SyslogIdentifier=abdur-abdur-myapp-watchdog
+SyslogIdentifier=abdur-myapp-watchdog

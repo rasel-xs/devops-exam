@@ -15,5 +15,5 @@ time curl localhost:3100/slow   # 45 seconds
 Two copies run for the load-balancing task, via the systemd template unit:
 
 ```bash
-sudo systemctl enable --now abdur-abdur-myapp@3101 abdur-abdur-myapp@3102
+sudo systemctl enable --now abdur-myapp@3101 abdur-myapp@3102
 ```

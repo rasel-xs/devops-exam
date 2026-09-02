@@ -1,8 +1,8 @@
-# /etc/systemd/system/abdur-abdur-myapp@.service -- template unit, one instance per port.
+# /etc/systemd/system/abdur-myapp@.service -- template unit, one instance per port.
 #
-#   sudo systemctl enable --now abdur-abdur-myapp@3101 abdur-abdur-myapp@3102
+#   sudo systemctl enable --now abdur-myapp@3101 abdur-myapp@3102
 #
-# %i is the bit after the @, so `abdur-abdur-myapp@3101` starts with PORT=3101. Two copies
+# %i is the bit after the @, so `abdur-myapp@3101` starts with PORT=3101. Two copies
 # of the same app on two ports for the nginx load-balancing task (A5), without
 # two nearly-identical unit files to keep in sync.
 [Unit]

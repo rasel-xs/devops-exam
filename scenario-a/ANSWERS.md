@@ -577,8 +577,8 @@ On this box: `<<FILL: paste journalctl --list-boots>>`.
 
 ### Task 15 — Alive but dead
 
-Watchdog: [`configs/abdur-abdur-myapp-watchdog.sh`](configs/abdur-abdur-myapp-watchdog.sh) +
-[`.service`](configs/abdur-abdur-myapp-watchdog.service) + [`.timer`](configs/abdur-abdur-myapp-watchdog.timer),
+Watchdog: [`configs/abdur-myapp-watchdog.sh`](configs/abdur-myapp-watchdog.sh) +
+[`.service`](configs/abdur-myapp-watchdog.service) + [`.timer`](configs/abdur-myapp-watchdog.timer),
 firing every 30s.
 
 **Why `Restart=on-failure` did not catch it.** `Restart=` is a reaction to a
