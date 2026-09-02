@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A5 task 18 -- passive health checks and failover, measured.
 #
-#   bash configs/a5-task18.sh "3 fails / 10s"
+#   bash configs/a5-task18.sh "3 fails / 10s"        # default 35s downtime
+#   bash configs/a5-task18.sh "1 fail / 30s"  15       # 15s downtime
 #
 # Runs a continuous request loop, stops backend 3102, waits, starts it again,
 # and reports what the CLIENT saw as well as what nginx recorded internally.
@@ -12,8 +13,13 @@ URL=http://127.0.0.1:8110/
 BACKEND=abdur-myapp@3102
 LOOPLOG=/tmp/abdur-failover.log
 ERRLOG=/var/log/nginx/abdur-myapp.error.log
-DOWN_FOR=35        # seconds to leave the backend stopped
-SETTLE=35          # seconds to watch it come back
+# How long to leave the backend stopped. This matters more than it looks:
+# if the downtime is LONGER than fail_timeout, the ban has already expired by
+# the time the backend returns and recovery looks instant either way. To see
+# what fail_timeout actually costs, the backend has to come back while it is
+# still banned -- hence the shorter downtime for the 30s run.
+DOWN_FOR="${2:-35}"
+SETTLE=45          # seconds to watch it come back
 
 hr() { printf '\n============ %s ============\n' "$*"; }
 echo "EXAM_TOKEN: ${EXAM_TOKEN:-NOT SET}"
