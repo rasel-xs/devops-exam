@@ -1,0 +1,178 @@
+Script started on 2026-09-02 20:32:26+02:00 [COMMAND="bash configs/a4-task14.sh" TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="157" LINES="46"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Wed Sep  2 20:32:26 CEST 2026
+
+============ 1. All logs from the last 10 minutes ============
+$ journalctl -u abdur-myapp --since "10 min ago" --no-pager
+Sep 02 20:30:19 vmi3536696 systemd[1]: abdur-myapp.service: Failed with result 'exit-code'.
+Sep 02 20:30:20 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 3.
+Sep 02 20:30:20 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service -- RESTART=ALWAYS VARIANT (token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:30:20 vmi3536696 abdur-myapp[227323]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227323)
+Sep 02 20:30:21 vmi3536696 systemd[1]: abdur-myapp.service: Main process exited, code=exited, status=1/FAILURE
+Sep 02 20:30:21 vmi3536696 systemd[1]: abdur-myapp.service: Failed with result 'exit-code'.
+Sep 02 20:30:22 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 4.
+Sep 02 20:30:22 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service -- RESTART=ALWAYS VARIANT (token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:30:22 vmi3536696 abdur-myapp[227359]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227359)
+Sep 02 20:30:23 vmi3536696 systemd[1]: abdur-myapp.service: Main process exited, code=exited, status=1/FAILURE
+Sep 02 20:30:23 vmi3536696 systemd[1]: abdur-myapp.service: Failed with result 'exit-code'.
+Sep 02 20:30:24 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 5.
+Sep 02 20:30:24 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service -- RESTART=ALWAYS VARIANT (token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:30:24 vmi3536696 abdur-myapp[227378]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227378)
+Sep 02 20:31:48 vmi3536696 systemd[1]: Stopping abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)...
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227378]: SIGTERM received, shutting down
+Sep 02 20:31:48 vmi3536696 systemd[1]: abdur-myapp.service: Deactivated successfully.
+Sep 02 20:31:48 vmi3536696 systemd[1]: Stopped abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:31:48 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227917]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227917)
+  ... (tail -20 shown; the query itself is unbounded)
+
+============ 2. Errors and worse ============
+$ journalctl -u abdur-myapp -p err --no-pager
+Sep 02 20:27:39 vmi3536696 systemd[1]: Failed to start abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+
+  proof that -p is a threshold and not an exact level:
+  err and worse : 1 lines
+  warning and worse: 17 lines
+  info and worse   : 97 lines
+
+============ 3a. Current boot only ============
+$ journalctl -u abdur-myapp -b 0 --no-pager
+Sep 02 20:30:24 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service -- RESTART=ALWAYS VARIANT (token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:30:24 vmi3536696 abdur-myapp[227378]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227378)
+Sep 02 20:31:48 vmi3536696 systemd[1]: Stopping abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)...
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227378]: SIGTERM received, shutting down
+Sep 02 20:31:48 vmi3536696 systemd[1]: abdur-myapp.service: Deactivated successfully.
+Sep 02 20:31:48 vmi3536696 systemd[1]: Stopped abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:31:48 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227917]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227917)
+
+============ 3b. Previous boot ============
+$ journalctl --list-boots
+IDX BOOT ID                          FIRST ENTRY                  LAST ENTRY
+  0 b8babff209c94d9e8ba99e30dd18dc44 Thu 2026-08-27 16:00:30 CEST Wed 2026-09-02 20:32:23 CEST
+
+$ journalctl -u abdur-myapp -b -1 --no-pager
+No journal boot entry found from the specified boot offset (-1).
+
+  If that says 'Specified boot ID not found', the journal is VOLATILE:
+  /run/log/journal is tmpfs and is wiped at every boot, so there is no
+  previous boot to read. Persisting it needs Storage=persistent in
+  /etc/systemd/journald.conf plus /var/log/journal to exist.
+  Current storage:
+/var/log/journal
+    /var/log/journal exists -> persistent
+
+============ 4. JSON output ============
+$ journalctl -u abdur-myapp -n 2 -o json-pretty --no-pager
+{
+	"[0;32m_CMDLINE[0m" : "[0;32m/usr/lib/systemd/systemd --system --deserialize=80[0m",
+	"[0;32m_HOSTNAME[0m" : "[0;32mvmi3536696[0m",
+	"[0;32m_RUNTIME_SCOPE[0m" : "[0;32msystem[0m",
+	"[0;32m_SOURCE_REALTIME_TIMESTAMP[0m" : "[0;32m1788373908578516[0m",
+	"[0;32m__REALTIME_TIMESTAMP[0m" : "[0;32m1788373908581104[0m",
+	"[0;32mJOB_TYPE[0m" : "[0;32mstart[0m",
+	"[0;32m_CAP_EFFECTIVE[0m" : "[0;32m1ffffffffff[0m",
+	"[0;32mCODE_LINE[0m" : "[0;32m796[0m",
+	"[0;32m__CURSOR[0m" : "[0;32ms=0ea9977f129b4434b1c5b42412621df8;i=1e081;b=b8babff209c94d9e8ba99e30dd18dc44;m=7c7d9faa5e;t=65a843f8beaf0;x=e5de6979e5956d35[0m",
+	"[0;32mUNIT[0m" : "[0;32mabdur-myapp.service[0m",
+	"[0;32mCODE_FILE[0m" : "[0;32msrc/core/job.c[0m",
+	"[0;32mSYSLOG_IDENTIFIER[0m" : "[0;32msystemd[0m",
+	"[0;32mSYSLOG_FACILITY[0m" : "[0;32m3[0m",
+	"[0;32m_UID[0m" : "[0;32m0[0m",
+	"[0;32mMESSAGE_ID[0m" : "[0;32m39f53479d3a045ac8e11786248231fbf[0m",
+	"[0;32m__SEQNUM_ID[0m" : "[0;32m0ea9977f129b4434b1c5b42412621df8[0m",
+	"[0;32mJOB_ID[0m" : "[0;32m204338[0m",
+	"[0;32m_MACHINE_ID[0m" : "[0;32m122ab6fb0fd542ec8b1555bcd75537d8[0m",
+	"[0;32m_EXE[0m" : "[0;32m/usr/lib/systemd/systemd[0m",
+	"[0;32m_TRANSPORT[0m" : "[0;32mjournal[0m",
+	"[0;32m_SYSTEMD_UNIT[0m" : "[0;32minit.scope[0m",
+	"[0;32m_SELINUX_CONTEXT[0m" : "[0;32munconfined\n[0m",
+	"[0;32m__MONOTONIC_TIMESTAMP[0m" : "[0;32m534683560542[0m",
+	"[0;32mPRIORITY[0m" : "[0;32m6[0m",
+	"[0;32mJOB_RESULT[0m" : "[0;32mdone[0m",
+	"[0;32mINVOCATION_ID[0m" : "[0;32m28c82fbd24a643cba8bab62882535b12[0m",
+	"[0;32m_SYSTEMD_SLICE[0m" : "[0;32m-.slice[0m",
+	"[0;32m_PID[0m" : "[0;32m1[0m",
+	"[0;32mTID[0m" : "[0;32m1[0m",
+	"[0;32m_BOOT_ID[0m" : "[0;32mb8babff209c94d9e8ba99e30dd18dc44[0m",
+	"[0;32m_GID[0m" : "[0;32m0[0m",
+	"[0;32m_COMM[0m" : "[0;32msystemd[0m",
+	"[0;32m__SEQNUM[0m" : "[0;32m123009[0m",
+	"[0;32mCODE_FUNC[0m" : "[0;32mjob_emit_done_message[0m",
+	"[0;32mMESSAGE[0m" : "[0;32mStarted abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).[0m",
+	"[0;32m_SYSTEMD_CGROUP[0m" : "[0;32m/init.scope[0m"
+}
+{
+	"[0;32m__REALTIME_TIMESTAMP[0m" : "[0;32m1788373908832279[0m",
+	"[0;32m__CURSOR[0m" : "[0;32ms=0ea9977f129b4434b1c5b42412621df8;i=1e083;b=b8babff209c94d9e8ba99e30dd18dc44;m=7c7da37f84;t=65a843f8fc017;x=4ac8417bc4628b86[0m",
+	"[0;32m_UID[0m" : "[0;32m997[0m",
+	"[0;32m_CAP_EFFECTIVE[0m" : "[0;32m0[0m",
+	"[0;32mMESSAGE[0m" : "[0;32mabdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227917)[0m",
+	"[0;32m_EXE[0m" : "[0;32m/usr/bin/node[0m",
+	"[0;32mSYSLOG_FACILITY[0m" : "[0;32m3[0m",
+	"[0;32mSYSLOG_IDENTIFIER[0m" : "[0;32mabdur-myapp[0m",
+	"[0;32m_CMDLINE[0m" : "[0;32m/usr/bin/node /srv/abdur/app/src/server.js[0m",
+	"[0;32m_SYSTEMD_INVOCATION_ID[0m" : "[0;32m28c82fbd24a643cba8bab62882535b12[0m",
+	"[0;32m_TRANSPORT[0m" : "[0;32mstdout[0m",
+	"[0;32m_PID[0m" : "[0;32m227917[0m",
+	"[0;32m_BOOT_ID[0m" : "[0;32mb8babff209c94d9e8ba99e30dd18dc44[0m",
+	"[0;32mPRIORITY[0m" : "[0;32m6[0m",
+	"[0;32m_SYSTEMD_CGROUP[0m" : "[0;32m/system.slice/abdur-myapp.service[0m",
+	"[0;32m__SEQNUM[0m" : "[0;32m123011[0m",
+	"[0;32m_STREAM_ID[0m" : "[0;32m33a0e20538b2437bb4802f7c6725463b[0m",
+	"[0;32m__SEQNUM_ID[0m" : "[0;32m0ea9977f129b4434b1c5b42412621df8[0m",
+	"[0;32m_GID[0m" : "[0;32m988[0m",
+	"[0;32m_SELINUX_CONTEXT[0m" : "[0;32munconfined\n[0m",
+	"[0;32m_SYSTEMD_SLICE[0m" : "[0;32msystem.slice[0m",
+	"[0;32m_COMM[0m" : "[0;32mnode[0m",
+	"[0;32m_HOSTNAME[0m" : "[0;32mvmi3536696[0m",
+	"[0;32m_RUNTIME_SCOPE[0m" : "[0;32msystem[0m",
+	"[0;32m_MACHINE_ID[0m" : "[0;32m122ab6fb0fd542ec8b1555bcd75537d8[0m",
+	"[0;32m_SYSTEMD_UNIT[0m" : "[0;32mabdur-myapp.service[0m",
+	"[0;32m__MONOTONIC_TIMESTAMP[0m" : "[0;32m534683811716[0m"
+}
+
+  -o json gives one object PER LINE instead, which is the form you pipe
+  to jq or ship to a log collector:
+$ journalctl -u abdur-myapp -n 3 -o json --no-pager | jq -r ".MESSAGE"
+Stopped abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227917)
+
+============ 5. Follow the logs live while the service restarts ============
+$ journalctl -u abdur-myapp -f     (in one terminal)
+$ systemctl restart abdur-myapp    (in another)
+
+Doing both here: -f runs in the background, capturing while we restart.
+>>> 20:32:28 systemctl restart abdur-myapp
+
+--- what -f captured as it happened ---
+Sep 02 20:30:23 vmi3536696 systemd[1]: abdur-myapp.service: Failed with result 'exit-code'.
+Sep 02 20:30:24 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 5.
+Sep 02 20:30:24 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service -- RESTART=ALWAYS VARIANT (token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:30:24 vmi3536696 abdur-myapp[227378]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227378)
+Sep 02 20:31:48 vmi3536696 systemd[1]: Stopping abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)...
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227378]: SIGTERM received, shutting down
+Sep 02 20:31:48 vmi3536696 systemd[1]: abdur-myapp.service: Deactivated successfully.
+Sep 02 20:31:48 vmi3536696 systemd[1]: Stopped abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:31:48 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227917]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227917)
+Sep 02 20:32:28 vmi3536696 systemd[1]: Stopping abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)...
+Sep 02 20:32:28 vmi3536696 abdur-myapp[227917]: SIGTERM received, shutting down
+Sep 02 20:32:28 vmi3536696 systemd[1]: abdur-myapp.service: Deactivated successfully.
+Sep 02 20:32:28 vmi3536696 systemd[1]: Stopped abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:32:28 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:32:29 vmi3536696 abdur-myapp[228253]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 228253)
+
+============ BONUS: SyslogIdentifier lets you filter without -u ============
+$ journalctl -t abdur-myapp -n 3 --no-pager
+Sep 02 20:31:48 vmi3536696 abdur-myapp[227917]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 227917)
+Sep 02 20:32:28 vmi3536696 abdur-myapp[227917]: SIGTERM received, shutting down
+Sep 02 20:32:29 vmi3536696 abdur-myapp[228253]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 228253)
+
+  -u filters by UNIT (includes systemd's own messages about the unit).
+  -t filters by SyslogIdentifier (only what the app itself wrote).
+
+============ END ============
+
+Script done on 2026-09-02 20:32:33+02:00 [COMMAND_EXIT_CODE="0"]

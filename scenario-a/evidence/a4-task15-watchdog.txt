@@ -1,0 +1,63 @@
+Script started on 2026-09-02 20:35:40+02:00 [COMMAND="bash configs/a4-task15.sh" TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="157" LINES="46"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Wed Sep  2 20:35:40 CEST 2026
+
+============ 1. BEFORE: the app is healthy ============
+state    : active
+main pid : 228253
+healthz  : ok
+
+============ 2. Hit /hang -- the app answers, then stops answering forever ============
+response from /hang: now hanging
+
+============ 3. THE POINT OF THIS TASK ============
+--- what systemd thinks ---
+state    : active
+main pid : 228253   (unchanged: 228253)
+● abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)
+     Loaded: loaded (/etc/systemd/system/abdur-myapp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-09-02 20:32:28 CEST; 3min 12s ago
+       Docs: https://github.com/REPLACE_WITH_GH_USER/devops-exam
+
+--- what a real request sees ---
+curl --max-time 5 /healthz : TIMED OUT after 5s (curl exit 28)
+
+--- and the socket is still open, which is why nothing looks wrong ---
+State             Recv-Q            Send-Q                        Local Address:Port                         Peer Address:Port            Process            
+LISTEN            0                 511                                 0.0.0.0:3100                              0.0.0.0:*                users:(("node",pid=228253,fd=24))
+
+The process is alive, the port is bound, the TCP handshake still completes
+because the kernel accepts connections on the app's behalf. systemd sees
+no exit, no signal, no failure -- so Restart=on-failure has nothing to
+react to. Liveness has to be asked at the HTTP layer, not the process one.
+
+============ 4. Waiting for the watchdog timer to notice ============
+[0;4mNEXT                        [0m[0;4m [0m[0;4mLEFT[0m[0;4m [0m[0;4mLAST                        [0m[0;4m [0m[0;4mPASSED[0m[0;4m [0m[0;4mUNIT                      [0m[0;4m [0m[0;4mACTIVATES                   [0m
+Wed 2026-09-02 20:36:08 CEST  22s Wed 2026-09-02 20:35:38 CEST 7s ago abdur-myapp-watchdog.timer abdur-myapp-watchdog.service
+
+[0;1;39m1 timers listed.[0m
+Pass --all to see loaded but inactive timers, too.
+
+hung at    : 20:35:46
+  20:35:51 still hung (pid 228253)
+  20:35:56 still hung (pid 228253)
+  20:36:01 still hung (pid 228253)
+  20:36:06 still hung (pid 228253)
+  20:36:11 still hung (pid 228253)
+recovered  : 20:36:16   (new pid 229837, was 228253)
+elapsed    : 30 seconds
+
+============ 5. AFTER: is it serving again? ============
+healthz  : ok
+state    : active
+
+============ 6. The timeline, with timestamps ============
+Sep 02 20:35:07 vmi3536696 abdur-myapp-watchdog[229429]: healthy: http://127.0.0.1:3100/healthz responded within 5s
+Sep 02 20:35:38 vmi3536696 abdur-myapp-watchdog[229606]: healthy: http://127.0.0.1:3100/healthz responded within 5s
+Sep 02 20:36:14 vmi3536696 abdur-myapp-watchdog[229831]: [0;1;39m[0;1;31m[0;1;39mUNHEALTHY: http://127.0.0.1:3100/healthz did not answer within 5s -- restarting abdur-myapp[0m
+Sep 02 20:36:14 vmi3536696 abdur-myapp-watchdog[229806]: unhealthy: http://127.0.0.1:3100/healthz did not answer within 5s -- restarting abdur-myapp
+Sep 02 20:36:14 vmi3536696 abdur-myapp-watchdog[229839]: [0;1;39m[0;1;31m[0;1;39mrestart of abdur-myapp returned 0[0m
+
+============ END ============
+
+Script done on 2026-09-02 20:36:16+02:00 [COMMAND_EXIT_CODE="0"]

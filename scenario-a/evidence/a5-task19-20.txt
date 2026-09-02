@@ -1,0 +1,77 @@
+Script started on 2026-09-02 21:08:53+02:00 [COMMAND="bash configs/a5-task1920.sh" TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="157" LINES="46"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Wed Sep  2 21:08:54 CEST 2026
+
+============ TASK 19a: /slow with proxy_read_timeout 5s -- expect 504 ============
+  130:        proxy_read_timeout   30s;
+  134:    # /slow takes 45 seconds. Default proxy_read_timeout is 60s, so it would
+  151:        proxy_read_timeout    5s;    # <-- make it fail:  5s
+  152:        # proxy_read_timeout  60s;   # <-- make it pass: 60s
+
+The backend sleeps 45s before replying. nginx gives up after 5.
+  http_code=504  time=5.009152s
+
+real	0m5.022s
+user	0m0.003s
+sys	0m0.012s
+
+--- and the error nginx logged for it ---
+  2026/09/02 21:08:59 [warn] 241627#241627: *2085 upstream server temporarily disabled while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /slow HTTP/1.1", upstream: "http://127.0.0.1:3101/slow", host: "127.0.0.1:8110"
+  2026/09/02 21:08:59 [error] 241627#241627: *2085 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /slow HTTP/1.1", upstream: "http://127.0.0.1:3101/slow", host: "127.0.0.1:8110"
+
+============ TASK 19b: raise it to 60s -- expect 200 after ~45s ============
+  151:        proxy_read_timeout   60s;    # <-- make it fail:  5s
+  nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+  nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+Now the same request. This takes 45 seconds -- that is the point.
+finally, from port 3101
+  http_code=200  time=45.015691s
+
+real	0m45.028s
+user	0m0.004s
+sys	0m0.016s
+
+============ TASK 19c: put it back to 5s ============
+  nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+  nginx: configuration file /etc/nginx/nginx.conf test is successful
+  130:        proxy_read_timeout   30s;
+  134:    # /slow takes 45 seconds. Default proxy_read_timeout is 60s, so it would
+  151:        proxy_read_timeout    5s;    # <-- make it fail:  5s
+  152:        # proxy_read_timeout  60s;   # <-- make it pass: 60s
+
+============ TASK 20: rate limiting -- 50 requests as fast as possible ============
+  10:# limit_req_zone below is legal here -- it is an http-context directive and
+  55:# limit_req_zone MUST be here: it allocates shared memory and is http-context
+  57:limit_req_zone $binary_remote_addr zone=abdur_api_limit:10m rate=10r/s;
+  59:# limit_req_status and limit_req_log_level are deliberately NOT here.
+  63:# this shared VPS already sets limit_req_status at http level, so putting mine
+  66:#   [emerg] "limit_req_status" directive is duplicate in .../abdur-myapp:56
+  90:    limit_req_status 429;
+  91:    limit_req_log_level warn;
+  163:        # rate=10r/s with burst=20 nodelay: 20 requests are let through
+  168:        limit_req zone=abdur_api_limit burst=20 nodelay;
+
+Note: /api/notes does not exist in this Scenario A app, so the backend
+answers 404. That does not weaken the test -- it strengthens it. A 429
+is produced by nginx BEFORE the request is ever proxied, so a mix of
+404 and 429 proves the limiter is rejecting requests rather than the
+backend rejecting them.
+
+     29 404
+     21 429
+
+--- what nginx logged about the rejections ---
+  2026/09/02 21:09:46 [warn] 244416#244416: *2142 limiting requests, excess: 20.720 by zone "abdur_api_limit", client: 127.0.0.1, server: _, request: "GET /api/notes HTTP/1.1", host: "127.0.0.1:8110"
+  2026/09/02 21:09:46 [warn] 244416#244416: *2143 limiting requests, excess: 20.270 by zone "abdur_api_limit", client: 127.0.0.1, server: _, request: "GET /api/notes HTTP/1.1", host: "127.0.0.1:8110"
+  2026/09/02 21:09:46 [warn] 244416#244416: *2144 limiting requests, excess: 20.120 by zone "abdur_api_limit", client: 127.0.0.1, server: _, request: "GET /api/notes HTTP/1.1", host: "127.0.0.1:8110"
+
+============ TASK 20b: same 50 requests, but slowly (under the limit) ============
+rate=10r/s, so one request every 0.2s is inside the budget and none
+should be rejected. This is the control that proves the limiter is
+counting rate rather than just refusing the 21st request it ever sees.
+     20 404
+
+============ END ============
+
+Script done on 2026-09-02 21:09:53+02:00 [COMMAND_EXIT_CODE="0"]

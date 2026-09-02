@@ -1,0 +1,100 @@
+Script started on 2026-09-02 21:04:17+02:00 [COMMAND="bash configs/a5-task18.sh "max_fails=1 fail_timeout=30s" 15" TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="157" LINES="46"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Wed Sep  2 21:04:17 CEST 2026
+settings  : max_fails=1 fail_timeout=30s
+38:    server 127.0.0.1:3101 max_fails=1 fail_timeout=30s;
+39:    server 127.0.0.1:3102 max_fails=1 fail_timeout=30s;
+
+============ starting the request loop (2 req/s) ============
+baseline (10s of normal traffic):
+     10 port 3101
+      7 port 3102
+
+============ stopping backend 3102 ============
+stopped at : 21:04:27.897
+
+============ starting backend 3102 again ============
+started at : 21:04:42.952
+
+============ WHAT THE CLIENT SAW ============
+     81 port 3101
+     35 port 3102
+
+client-visible failures : 0
+total requests          : 116
+
+============ TIMELINE around the stop ============
+(stopped at 21:04:27.897)
+21:04:28.332 port 3101
+21:04:28.868 port 3101
+21:04:29.392 port 3101
+21:04:29.923 port 3101
+21:04:30.453 port 3101
+21:04:30.987 port 3101
+21:04:32.182 port 3101
+21:04:32.707 port 3101
+21:04:33.275 port 3101
+21:04:33.797 port 3101
+21:04:34.347 port 3101
+21:04:34.889 port 3101
+21:04:35.422 port 3101
+21:04:36.072 port 3101
+21:04:36.608 port 3101
+21:04:37.163 port 3101
+21:04:37.700 port 3101
+21:04:38.238 port 3101
+21:04:38.767 port 3101
+21:04:39.294 port 3101
+
+============ TIMELINE around the restart ============
+(started at 21:04:42.952)
+21:04:43.408 port 3101
+21:04:43.938 port 3101
+21:04:44.462 port 3101
+21:04:45.031 port 3101
+21:04:45.613 port 3101
+21:04:46.195 port 3101
+21:04:46.798 port 3101
+21:04:47.431 port 3101
+21:04:47.955 port 3101
+21:04:48.528 port 3102
+21:04:49.063 port 3101
+21:04:49.593 port 3102
+21:04:50.122 port 3101
+21:04:50.669 port 3102
+21:04:51.203 port 3101
+21:04:51.922 port 3102
+21:04:52.455 port 3101
+21:04:52.986 port 3102
+21:04:53.509 port 3101
+21:04:54.042 port 3102
+21:04:54.580 port 3101
+21:04:55.108 port 3102
+21:04:55.659 port 3101
+21:04:56.209 port 3102
+21:04:57.133 port 3101
+21:04:57.706 port 3101
+21:04:58.241 port 3101
+21:04:58.817 port 3101
+21:04:59.394 port 3101
+21:04:59.933 port 3101
+
+============ FIRST REQUEST BACK ON 3102 AFTER THE RESTART ============
+21:04:48.528 port 3102
+
+============ WHAT NGINX RECORDED INTERNALLY ============
+These are the failures the client never saw, because
+proxy_next_upstream retried them on the healthy backend.
+upstream error lines : 6
+
+2026/09/02 21:04:28 [error] 241623#241623: *1968 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: _, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3102/", host: "127.0.0.1:8110"
+2026/09/02 21:04:28 [warn] 241623#241623: *1968 upstream server temporarily disabled while connecting to upstream, client: 127.0.0.1, server: _, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3102/", host: "127.0.0.1:8110"
+2026/09/02 21:04:29 [error] 241625#241625: *1971 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: _, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3102/", host: "127.0.0.1:8110"
+2026/09/02 21:04:29 [warn] 241625#241625: *1971 upstream server temporarily disabled while connecting to upstream, client: 127.0.0.1, server: _, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3102/", host: "127.0.0.1:8110"
+2026/09/02 21:04:39 [error] 241626#241626: *1989 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: _, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3102/", host: "127.0.0.1:8110"
+2026/09/02 21:04:39 [warn] 241626#241626: *1989 upstream server temporarily disabled while connecting to upstream, client: 127.0.0.1, server: _, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3102/", host: "127.0.0.1:8110"
+
+============ END ============
+full loop log kept at /tmp/abdur-failover.log
+
+Script done on 2026-09-02 21:05:28+02:00 [COMMAND_EXIT_CODE="0"]

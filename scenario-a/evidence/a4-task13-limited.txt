@@ -1,0 +1,88 @@
+Script started on 2026-09-02 20:27:26+02:00 [COMMAND="bash configs/a4-task13.sh" TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="157" LINES="46"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Wed Sep  2 20:27:26 CEST 2026
+mode      : limited
+
+============ BEFORE ============
+Restart=on-failure
+NRestarts=2
+StartLimitIntervalUSec=1min
+StartLimitBurst=5
+state    : active
+main pid : 104202
+
+resetting the counter so the six crashes start from a clean window...
+
+============ CRASHING IT SIX TIMES ============
+20:27:29 crash 1 -> bye
+  | pid now: 226021  state: active
+20:27:31 crash 2 -> bye
+  | pid now: 226042  state: active
+20:27:33 crash 3 -> bye
+  | pid now: 226101  state: active
+20:27:35 crash 4 -> bye
+  | pid now: 226120  state: active
+20:27:37 crash 5 -> bye
+  | pid now: 226140  state: activating
+20:27:39 crash 6 -> (app was already down)  | pid now: 0  state: failed
+
+============ AFTER ============
+[0;1;31m×[0m abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)
+     Loaded: loaded (]8;;file://vmi3536696/etc/systemd/system/abdur-myapp.service/etc/systemd/system/abdur-myapp.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;31mfailed[0m (Result: exit-code) since Wed 2026-09-02 20:27:39 CEST; 5s ago
+   Duration: 1.009s
+       Docs: ]8;;https://github.com/rasel-xs/devops-examhttps://github.com/rasel-xs/devops-exam]8;;
+    Process: 226140 ExecStart=/usr/bin/node /srv/abdur/app/src/server.js [0;1;31m(code=exited, status=1/FAILURE)[0m
+   Main PID: 226140 (code=exited, status=1/FAILURE)
+        CPU: 407ms
+
+NRestarts : 5
+state     : failed
+result    : exit-code
+
+--- is the port still served? ---
+  nothing on port 3100 -- the service is down for good
+
+============ JOURNAL ============
+Sep 01 21:05:17 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 01 21:05:17 vmi3536696 abdur-myapp[103465]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 103465)
+Sep 01 21:24:07 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Main process exited, code=killed, status=9/KILL[0m
+Sep 01 21:24:07 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'signal'.[0m
+Sep 01 21:24:08 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 2.
+Sep 01 21:24:08 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 01 21:24:09 vmi3536696 abdur-myapp[104202]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 104202)
+Sep 02 20:27:27 vmi3536696 systemd[1]: Stopping abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427)...
+Sep 02 20:27:27 vmi3536696 abdur-myapp[104202]: SIGTERM received, shutting down
+Sep 02 20:27:27 vmi3536696 systemd[1]: abdur-myapp.service: Deactivated successfully.
+Sep 02 20:27:27 vmi3536696 systemd[1]: Stopped abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:27:27 vmi3536696 systemd[1]: abdur-myapp.service: Consumed 1.722s CPU time, 15.7M memory peak, 0B memory swap peak.
+Sep 02 20:27:27 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:27:27 vmi3536696 abdur-myapp[226021]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 226021)
+Sep 02 20:27:29 vmi3536696 systemd[1]: [0;1;39m[0;1;31m[0;1;39mabdur-myapp.service: Main process exited, code=exited, status=1/FAILURE[0m
+Sep 02 20:27:29 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'exit-code'.[0m
+Sep 02 20:27:30 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 1.
+Sep 02 20:27:30 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:27:30 vmi3536696 abdur-myapp[226042]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 226042)
+Sep 02 20:27:31 vmi3536696 systemd[1]: [0;1;39m[0;1;31m[0;1;39mabdur-myapp.service: Main process exited, code=exited, status=1/FAILURE[0m
+Sep 02 20:27:31 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'exit-code'.[0m
+Sep 02 20:27:32 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 2.
+Sep 02 20:27:32 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:27:32 vmi3536696 abdur-myapp[226101]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 226101)
+Sep 02 20:27:33 vmi3536696 systemd[1]: [0;1;39m[0;1;31m[0;1;39mabdur-myapp.service: Main process exited, code=exited, status=1/FAILURE[0m
+Sep 02 20:27:33 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'exit-code'.[0m
+Sep 02 20:27:34 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 3.
+Sep 02 20:27:34 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:27:34 vmi3536696 abdur-myapp[226120]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 226120)
+Sep 02 20:27:35 vmi3536696 systemd[1]: [0;1;39m[0;1;31m[0;1;39mabdur-myapp.service: Main process exited, code=exited, status=1/FAILURE[0m
+Sep 02 20:27:35 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'exit-code'.[0m
+Sep 02 20:27:36 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 4.
+Sep 02 20:27:36 vmi3536696 systemd[1]: Started abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).
+Sep 02 20:27:37 vmi3536696 abdur-myapp[226140]: abdur-myapp listening on 0.0.0.0:3100 as vmi3536696 (pid 226140)
+Sep 02 20:27:37 vmi3536696 systemd[1]: [0;1;39m[0;1;31m[0;1;39mabdur-myapp.service: Main process exited, code=exited, status=1/FAILURE[0m
+Sep 02 20:27:37 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'exit-code'.[0m
+Sep 02 20:27:39 vmi3536696 systemd[1]: abdur-myapp.service: Scheduled restart job, restart counter is at 5.
+Sep 02 20:27:39 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Start request repeated too quickly.[0m
+Sep 02 20:27:39 vmi3536696 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mabdur-myapp.service: Failed with result 'exit-code'.[0m
+Sep 02 20:27:39 vmi3536696 systemd[1]: [0;1;31m[0;1;39m[0;1;31mFailed to start abdur-myapp.service - abdur-myapp demo service (exam token: root-vmi3536696-1788282556-1536d427).[0m
+
+Script done on 2026-09-02 20:27:45+02:00 [COMMAND_EXIT_CODE="0"]
