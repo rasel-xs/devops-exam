@@ -727,8 +727,32 @@ whatever the client sent, so a client can pre-seed the header with any value it
 likes. Only the last entry — the one nginx added — is trustworthy. Rate limiting
 or IP allow-lists that read the first entry are trivially spoofable.
 
-Evidence: `evidence/a5-whoami-from-laptop.png`, showing my real home IP in
-`x-real-ip` while `remoteAddress` is `127.0.0.1`.
+Evidence: [`evidence/a5-task16-whoami.txt`](evidence/a5-task16-whoami.txt),
+requested from my laptop:
+
+```json
+{
+    "remoteAddress": "127.0.0.1",          <- what the app can see by itself
+    "realIpHeader":  "103.126.60.85",      <- my actual home IP
+    "forwardedFor":  "103.126.60.85",
+    "headers": {
+        "host": "169.58.246.108",          <- original Host, not the upstream
+        "x-forwarded-proto": "http",
+        "x-forwarded-port": "8110"
+    }
+}
+```
+
+Direct to the backend, with no proxy in the way, the same endpoint returns
+`"realIpHeader": null` — the headers exist only because nginx adds them.
+
+A detail worth recording: `curl https://api.ipify.org` from the same machine
+reported **103.126.60.87**, one octet away from the 103.126.60.85 nginx saw.
+Both are in the same /24 — my ISP NATs customers behind a pool of public
+addresses and different connections leave via different ones. That is the same
+fact that makes `ip_hash` degenerate (task 17) and makes per-IP rate limiting
+approximate (task 20): an "IP" is frequently not one user, and sometimes not
+even one connection from one user.
 
 ### Task 17 — Load balancing algorithms
 
@@ -736,9 +760,27 @@ Evidence: `evidence/a5-whoami-from-laptop.png`, showing my real home IP in
 
 | Algorithm | 3101 | 3102 | What it does |
 | --- | --- | --- | --- |
-| round robin (default) | `<<FILL: ~50>>` | `<<FILL: ~50>>` | strict alternation, blind to load |
-| `least_conn` | `<<FILL>>` | `<<FILL>>` | picks the backend with fewest active connections |
-| `ip_hash` | `<<FILL: 100>>` | `<<FILL: 0>>` | hashes the client IP; one client = one backend |
+| round robin (default) | **50** | **50** | strict alternation, blind to load |
+| `least_conn` | **52** | **48** | picks the backend with fewest active connections |
+| `ip_hash` (1st run) | 97 | 3 | hashes the client IP; one client = one backend |
+| `ip_hash` (repeat) | **100** | **0** | see the note below |
+
+**Why `ip_hash` needed running twice.** The first run gave 97/3, which should
+be impossible for a deterministic hash from a single client IP. The cause was
+the reload: `systemctl reload nginx` does not kill the old workers, it lets
+them finish their existing connections while new workers start. The loop began
+immediately after the reload, so the first few requests were served by old
+workers still running the previous `least_conn` configuration. Re-running once
+the workers had cycled gave exactly **100/0**. Worth knowing generally: a
+measurement taken in the seconds after a reload can be measuring the old
+config.
+
+**A prerequisite finding: round-robin state is per worker process.** My first
+three-request test sent all three to 3101 and looked broken. nginx runs
+`worker_processes auto` — four workers on this box — and each keeps its own
+round-robin cursor, so each worker's *first* request goes to the first upstream.
+Small samples therefore look badly skewed while 100 requests come out 50/50.
+This is the same per-worker state that explains the failover numbers in task 18.
 
 **Round robin** alternates regardless of what each backend is doing. With
 uniform, fast requests that is optimal and the split is 50/50. It falls apart
@@ -760,54 +802,115 @@ CDN egress range.
 
 ### Task 18 — Passive health checks and failover
 
-Measured from `evidence/a5-failover-loop.txt`.
+Measured with [`configs/a5-task18.sh`](configs/a5-task18.sh) —
+[run 1](evidence/a5-task18-run1.txt), [run 2](evidence/a5-task18-run2.txt).
+
+**Two different numbers have to be measured, not one.** The config sets
+`proxy_next_upstream error timeout http_502 http_503 http_504`, so when a
+backend fails nginx silently retries the request on the healthy one. Counting
+only what the client saw would give "0 failures" and the conclusion that
+nothing broke. The failures are real; they are in nginx's error log.
 
 | | `max_fails=3 fail_timeout=10s` | `max_fails=1 fail_timeout=30s` |
 | --- | --- | --- |
-| Requests failed before 3102 was ejected | `<<FILL>>` | `<<FILL>>` |
-| Time from stopping 3102 to a clean stream | `<<FILL>>s` | `<<FILL>>s` |
-| Time from restarting 3102 to traffic returning | `<<FILL>>s` | `<<FILL>>s` |
-| Periodic single failures while it stayed down | `<<FILL>>` | `<<FILL>>` |
+| Downtime in the test | 35 s | 15 s |
+| **Client-visible failures** | **0** | **0** |
+| **Upstream failures in nginx's log** | **16 lines** | **6 lines** |
+| Time from stop to ejection | ~3.0 s | **~0.4 s** |
+| Time from restart to traffic returning | **0.93 s** | **5.6 s** |
 
-**Why those numbers.** nginx open source does not poll anything. A backend is
-marked down only after `max_fails` failed *proxied requests* inside a
-`fail_timeout` window — so failures have to be paid for with real traffic. With
-round robin at ~2 req/s, roughly every other request goes to the dead backend,
-so 3 failures cost about 6 requests ≈ 3 seconds. `proxy_next_upstream` masks
-some of those from the client by retrying on the live backend, which is why the
-client-visible failure count is lower than the internal one.
+**Why 16 and not 3.** `max_fails` is counted **per worker process**, not
+globally — an upstream without a `zone` directive keeps its peer state in each
+worker's own memory. The log confirms it exactly:
 
-`fail_timeout` does double duty: it is both the window in which failures are
-counted *and* the length of the ban. So a backend ejected with
-`fail_timeout=10s` is retried 10 seconds later; if it answers it returns to
-rotation immediately, and if not it is banned for another 10s. That produces the
-single isolated failure every ~10s while the backend stays down — the probe
-request is a real user's request. Traffic therefore returns within one
-`fail_timeout` of the backend recovering, not instantly.
+```
+$ grep '20:58:' error.log | grep -oP '#\K[0-9]+' | sort | uniq -c
+      4 237233
+      4 237234
+      4 237235
+      4 237236
+$ grep -c 'temporarily disabled' error.log
+4
+```
 
-With `max_fails=1 fail_timeout=30s` the trade flips: ejection after a single
-failure (fewer users see an error) but a 30-second ban and 30-second retry
-interval, so recovery is much slower and one transient blip takes a healthy
-backend out for half a minute. That is the real tension — `max_fails=1` is
-aggressive about protecting users and dangerous under packet loss, since a
-single flap can eject backends until nothing is left. When every backend is
-marked down nginx clears the flags and tries them all again rather than
-returning 502 to everyone, which is a deliberate and slightly surprising safety
-valve.
+Four workers × (3 `connect() failed` + 1 `temporarily disabled`) = 16. The
+practical consequence: with `max_fails=3` and four workers, **up to twelve real
+requests can hit a dead backend** before every worker has ejected it. That
+number scales with `worker_processes`, which is not obvious from the directive.
 
-This is also the honest limitation of open-source nginx: no active probes
-(`health_check` is nginx Plus), so a backend is never known-good until a real
-user pays to find out. Alternatives: put HAProxy in front, or run
-`nginx-module-vts`/`ngx_http_upstream_check_module`.
+**Why `fail_timeout` governs both halves.** It is simultaneously the window in
+which failures are counted *and* the length of the ban. So a backend ejected
+with `fail_timeout=10s` is retried 10 seconds later; the retry is a real user's
+request, because nginx open source never probes on its own. That is why a
+single isolated failure reappears periodically while a backend stays down —
+each one is a probe someone paid for.
+
+**A prediction that was wrong, and what it taught me.** I expected run 2 to
+recover in ~15 s, because the backend returned while still inside its 30 s ban.
+It recovered in **5.6 s**. The reason is again per-worker state: only three of
+the four workers ever sent a request to 3102 while it was down, so the fourth
+never marked it as failed and never banned it. When 3102 came back, that worker
+routed to it immediately without waiting for anyone's ban to expire.
+
+```
+workers running   : 241623  241625  241626  241627
+workers in the log: 241623  241625  241626           <- 241627 never saw a failure
+```
+
+So "the backend is ejected" is not a property of nginx; it is a property of
+*each worker*, and recovery is as fast as the most optimistic worker. Adding
+`zone upstream_name 64k;` to the upstream block puts that state in shared
+memory and makes the behaviour uniform — which is exactly why that directive
+exists.
+
+**The trade between the two settings.** `max_fails=1` ejects roughly 7× faster
+and wastes far fewer requests, but bans for 30 s, so one transient blip removes
+a healthy backend for half a minute. Under mild packet loss it can eject
+backends one after another; nginx's safety valve is that when *every* upstream
+is marked down it clears the flags and tries them all again rather than
+returning 502 to everyone.
+
+**The honest limitation.** All of this is passive. nginx open source has no
+active probing (`health_check` is nginx Plus), so a backend is never known-good
+until a real user pays to find out. Alternatives: HAProxy in front,
+`ngx_http_upstream_check_module`, or a service mesh.
 
 ### Task 19 — The 504, and why raising the timeout is the wrong fix
 
-With `proxy_read_timeout 5s`: `504 Gateway Time-out` after ~5s.
-With `proxy_read_timeout 60s`: `200` after ~45s. Both in
-`evidence/a5-504.png` and `evidence/a5-504-fixed.png`.
+Measured in [`evidence/a5-task19-20.txt`](evidence/a5-task19-20.txt):
+
+```
+proxy_read_timeout  5s  ->  http_code=504  time=5.009152s
+proxy_read_timeout 60s  ->  http_code=200  time=45.015691s
+```
+
+and the error nginx logged for the 504:
+
+```
+[error] upstream timed out (110: Connection timed out) while reading response
+        header from upstream, upstream: "http://127.0.0.1:3101/slow"
+```
+
+**Something I did not expect, and it strengthens the argument below.** The same
+504 also produced:
+
+```
+[warn] upstream server temporarily disabled while reading response header from
+       upstream, upstream: "http://127.0.0.1:3101/slow"
+```
+
+The timeout counted as a failure against `max_fails`, so **one slow request
+ejected a completely healthy backend from the rotation**. `proxy_next_upstream
+off` on that location prevents the request being retried elsewhere; it does not
+stop the failure being counted. With `max_fails=1` a single slow request costs
+you half your capacity for `fail_timeout` seconds.
 
 **Why raising it is usually wrong.** The timeout is not the problem; it is the
-alarm. Raising it silences the alarm and leaves the 45-second request in place,
+alarm. And on this system it is not even only about worker connections: as
+measured above, a request that exceeds the timeout is counted as an upstream
+failure, so a slow endpoint can eject healthy backends and *reduce* the
+capacity available to everything else. Raising the timeout hides that, at the
+cost of holding the resources for longer. Raising it silences the alarm and leaves the 45-second request in place,
 and now that request holds resources for 45 seconds at *every* layer instead of
 5.
 
@@ -857,7 +960,39 @@ separate from `/`.
 `limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s` +
 `limit_req zone=api_limit burst=20 nodelay` on `/api/`.
 
-50 rapid requests: `<<FILL: e.g. 21x 200, 29x 429>>` — `evidence/a5-ratelimit.png`.
+50 requests as fast as possible:
+
+```
+     29 404
+     21 429
+```
+
+(404 rather than 200 because `/api/notes` belongs to the Scenario B app and
+does not exist here. That makes the test *stronger*, not weaker: a 429 is
+produced by nginx before the request is proxied at all, so a 404/429 mix proves
+the rejection is nginx's and not the backend's.)
+
+**Why 29 got through.** `burst=20` allows 20 immediately, and the 50 requests
+took about a second, during which `rate=10r/s` refilled roughly 9 more. 20 + 9
+= 29. The arithmetic matching is what tells you the limiter is configured the
+way you think it is.
+
+**A control test I added.** Firing 50 requests fast and seeing 429s does not by
+itself prove rate limiting — a naive "reject everything after the 21st request"
+would look identical. So I repeated it with a 0.2 s gap, which is inside the
+10r/s budget:
+
+```
+     20 404          <- zero 429s
+```
+
+Same endpoint, same count, no rejections. The limiter is measuring *rate*.
+
+nginx's own log shows the running excess counter:
+
+```
+[warn] limiting requests, excess: 20.720 by zone "abdur_api_limit", client: 127.0.0.1
+```
 
 Details that matter:
 

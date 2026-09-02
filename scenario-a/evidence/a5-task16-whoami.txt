@@ -1,0 +1,21 @@
+root-vmi3536696-1788282556-1536d427 | Thu Sep  3 01:11:58 +06 2026
+=== laptop theke /whoami ===
+{
+    "port": 3101,
+    "hostname": "vmi3536696",
+    "remoteAddress": "127.0.0.1",
+    "realIpHeader": "103.126.60.85",
+    "forwardedFor": "103.126.60.85",
+    "headers": {
+        "host": "169.58.246.108",
+        "x-real-ip": "103.126.60.85",
+        "x-forwarded-for": "103.126.60.85",
+        "x-forwarded-proto": "http",
+        "x-forwarded-host": "169.58.246.108",
+        "x-forwarded-port": "8110",
+        "user-agent": "curl/8.7.1",
+        "accept": "*/*"
+    }
+}
+=== amar asol public IP ===
+103.126.60.87
