@@ -534,12 +534,27 @@ top. Reaching a terminal `failed` state is what makes the alert fire, stops the
 box being a bad neighbour, and leaves the last real error at the end of the
 journal instead of buried 10,000 lines up.
 
-**With `Restart=always` and `StartLimitBurst=0`** the same loop never stops.
-`systemctl status` shows `active (running)` with a main PID that changes every
-couple of seconds, `NRestarts=` climbs without bound, and journal is a wall of
-identical start/exit pairs. Note that *deleting* the StartLimit lines is not the
-same as disabling the limit: systemd falls back to its defaults of 5 starts per
-10s, which is why `StartLimitBurst=0` is set explicitly.
+**With `Restart=always` and `StartLimitBurst=0`** the same six crashes produce
+the opposite outcome
+([`evidence/a4-task13-always.txt`](evidence/a4-task13-always.txt)):
+
+| | `StartLimitBurst=5` | `Restart=always`, `Burst=0` |
+| --- | --- | --- |
+| restart counter reaches | 5, then stops | 5, then keeps going |
+| after crash 6 | `Start request repeated too quickly` | `Started abdur-myapp.service` |
+| `systemctl is-active` | **failed** | **active (running)** |
+| `Result` | `exit-code` | **`success`** |
+| port 3100 | dead | `ok` — still answering |
+
+The line that matters most is **`result: success`**. The app crashed six times
+in twelve seconds and systemd reports success, because by its own definition it
+succeeded: it was asked to keep a process running and it did. Any monitoring
+that asks "has this unit failed?" gets **no**.
+
+Note that *deleting* the StartLimit lines is not the same as disabling the
+limit: systemd falls back to its defaults of 5 starts per 10s, so the service
+would still give up and you would conclude the setting does not work. Hence
+`StartLimitBurst=0` explicitly.
 
 **How I would notice this in production without watching a terminal:**
 
@@ -567,13 +582,57 @@ also alert on restart count. Without that alert it is a way of hiding outages.
 | 4 | JSON | `journalctl -u abdur-myapp -o json-pretty -n 5` (`-o json` for one object per line, which is what you pipe to `jq`) |
 | 5 | Follow live | `journalctl -u abdur-myapp -f` then `sudo systemctl restart abdur-myapp` in another terminal |
 
-Two notes: `-p err` takes the priority *and everything more severe*, it is not
-an exact match — `-p err..err` if you really want only that level. And `-b -1`
-returns "Specified boot ID not found" unless the journal is persistent; that
-needs `Storage=persistent` in `/etc/systemd/journald.conf` and
-`/var/log/journal` to exist, which is not the default on a minimal Ubuntu
-image. `journalctl --list-boots` shows what is actually retained.
-On this box: `<<FILL: paste journalctl --list-boots>>`.
+Transcript: [`evidence/a4-task14-journalctl.txt`](evidence/a4-task14-journalctl.txt).
+
+**`-p` is a maximum, not an exact level.** `-p err` returns err *and everything
+more severe* (crit, alert, emerg). Counting lines on my own journal proves it
+rather than asserting it:
+
+```
+err and worse     :  1 lines
+warning and worse : 17 lines
+info and worse    : 97 lines
+```
+
+If it were an exact match those three numbers could not be nested like that.
+`-p err..err` is the syntax for a single level.
+
+**`-b -1` returned "No journal boot entry found from the specified boot offset
+(-1)" — and the usual explanation is wrong here.** The common cause is a
+volatile journal (`/run/log/journal` on tmpfs, wiped every boot), but on this
+box:
+
+```
+$ journalctl --list-boots
+IDX BOOT ID                          FIRST ENTRY                  LAST ENTRY
+  0 b8babff209c94d9e8ba99e30dd18dc44 Thu 2026-08-27 16:00:30 CEST Wed 2026-09-02 20:32:23 CEST
+
+$ ls -d /var/log/journal
+/var/log/journal          <- persistent storage IS enabled
+```
+
+The journal is persistent; there is simply **only one boot recorded**, because
+the VPS has been up since 27 August and has never rebooted. There is no
+previous boot to show. `journalctl --list-boots` is what distinguishes the two
+causes, and it is worth running before concluding the journal is misconfigured.
+
+**`-f` caught the restart as it happened**, which is the point of the query:
+
+```
+20:32:28 systemd[1]: Stopping abdur-myapp.service...
+20:32:28 abdur-myapp[227917]: SIGTERM received, shutting down
+20:32:28 systemd[1]: abdur-myapp.service: Deactivated successfully.
+20:32:28 systemd[1]: Started abdur-myapp.service
+20:32:29 abdur-myapp[228253]: listening on 0.0.0.0:3100 (pid 228253)
+```
+
+`Deactivated successfully` rather than a kill is the graceful-shutdown handler
+in the app doing its job.
+
+**Bonus, and the reason `SyslogIdentifier` is in the unit:** `-u abdur-myapp`
+returns systemd's messages *about* the unit as well as the app's own output,
+while `-t abdur-myapp` returns only what the app itself wrote. When you want to
+read application logs without systemd's lifecycle chatter, `-t` is the one.
 
 ### Task 15 — Alive but dead
 
@@ -608,9 +667,47 @@ than trusting the app's opinion of itself.
 batches timers together to let the CPU idle, which turns a "30 second" watchdog
 into one that fires whenever it feels like it.
 
-Evidence with timestamps (`evidence/a4-watchdog.png`): `/hang` at T, watchdog
-logs `UNHEALTHY` at T+`<<FILL>>`s, `systemd[1]: abdur-myapp.service: Scheduled
-restart job` immediately after, `/healthz` answering again by T+`<<FILL>>`s.
+**Proof that systemd cannot see it**
+([`evidence/a4-task15-watchdog.txt`](evidence/a4-task15-watchdog.txt)). Taken a
+second after hitting `/hang`:
+
+```
+--- what systemd thinks ---
+state    : active
+main pid : 228253   (unchanged)
+Active: active (running) since Wed 2026-09-02 20:32:28 CEST; 3min 12s ago
+
+--- what a real request sees ---
+curl --max-time 5 /healthz : TIMED OUT after 5s (curl exit 28)
+
+--- and the socket is still open ---
+LISTEN 0 511 0.0.0.0:3100  users:(("node",pid=228253,fd=24))
+```
+
+`Send-Q 511` is the kernel's accept backlog: the kernel is completing handshakes
+and queueing connections on the app's behalf while the app never calls
+`accept()`. From outside, the port looks perfectly alive.
+
+**The watchdog catching it, with timestamps:**
+
+```
+20:35:38  watchdog: healthy: /healthz responded within 5s     <- last good check
+20:35:46  /hang hit
+20:36:08  timer due (30s after the last activation)
+20:36:14  watchdog: UNHEALTHY: /healthz did not answer within 5s -- restarting abdur-myapp
+20:36:14  watchdog: restart of abdur-myapp returned 0
+20:36:16  new pid 229837, healthz: ok
+```
+
+**Measured recovery: 30 seconds** from hang to a working process.
+
+The worst case is worth stating precisely, because it is what you would put in
+an SLO: **30s (the timer interval) + 5s (the curl timeout) = 35 seconds** before
+a restart even begins. Tightening it means either a shorter interval — more
+probe traffic and more risk of restarting on a transient blip — or a shorter
+curl timeout, which risks calling a merely-slow app dead. That trade is the
+whole design of a liveness probe, and it is the same trade Kubernetes exposes
+as `periodSeconds` and `timeoutSeconds`.
 
 ---
 
