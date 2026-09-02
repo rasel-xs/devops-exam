@@ -1,7 +1,8 @@
-# B4 -- Docker Swarm stack. exam token: REPLACE_WITH_EXAM_TOKEN
+# B4 -- Docker Swarm stack. exam token: root-vmi3536696-1788282556-1536d427
 #
 #   docker swarm init --advertise-addr <server-ip>
-#   docker stack deploy -c docker/stack.yml notes
+#   docker stack deploy -c docker/stack.yml abdur_notes   <- namespaced: one
+#                                                          swarm per host, shared box
 #   docker stack services notes
 #
 # The image MUST come from a registry, not a local build: Swarm schedules tasks
@@ -22,7 +23,7 @@ services:
       # healthy task on any node. `mode: host` would bypass the mesh and bind
       # the port on the node running the task instead.
       - target: 3000
-        published: 3000
+        published: 3140      # 3140 on the host -- 3120 belongs to the compose stack
         protocol: tcp
         mode: ingress
     networks: [notes_net]
@@ -97,7 +98,7 @@ services:
           - node.platform.os == linux
 
       labels:
-        exam.token: "REPLACE_WITH_EXAM_TOKEN"
+        exam.token: "root-vmi3536696-1788282556-1536d427"
 
   postgres:
     image: postgres:16-alpine

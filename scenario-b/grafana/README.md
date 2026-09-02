@@ -12,7 +12,7 @@ http://localhost:3001   admin / admin
 in every panel capture:
 
 ```bash
-sed -i '' "s/REPLACE_WITH_EXAM_TOKEN/$EXAM_TOKEN/" dashboard.json   # macOS
+sed -i '' "s/root-vmi3536696-1788282556-1536d427/$EXAM_TOKEN/" dashboard.json   # macOS
 docker compose -f ../docker/docker-compose.yml restart grafana
 ```
 

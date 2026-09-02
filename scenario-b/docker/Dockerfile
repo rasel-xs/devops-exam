@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build. Build context is scenario-b/app:
 #   docker build -f docker/Dockerfile -t notes-api:multi app/
-# exam token: REPLACE_WITH_EXAM_TOKEN
+# exam token: root-vmi3536696-1788282556-1536d427
 
 # ---------------------------------------------------------------- deps -------
 # Full node image here: npm needs python3/make/g++ to build any native module,
