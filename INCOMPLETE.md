@@ -27,8 +27,8 @@ distinction matters for marking, so it is stated per item rather than hidden.
 | A1 users/ACL/sudo | yes | **DONE** | `verify-a1.sh` PASS=12 FAIL=0, `evidence/a1-proof-table.txt` |
 | A2 port forensics | yes | **DONE** | tasks 5-8, `evidence/a2-session.txt` + `a2-task8-from-laptop.txt` |
 | A3 healthcheck.sh | yes | **DONE** | tasks 9-11 incl. the flock guard and two cron runs, `evidence/a3-session.txt` |
-| A4 systemd | yes | no | crash loop, journalctl queries, watchdog timing all need the VPS |
-| A5 nginx | yes | no | all measured numbers (distribution, failover counts, 504 timings, 429 counts) are `<<FILL>>` |
+| A4 systemd | yes | **DONE** | tasks 12-15, restart limit hit at 5, watchdog recovery 30s |
+| A5 nginx | yes | **DONE** | tasks 16-20, all numbers measured |
 | B1 Dockerfiles | yes | no | Docker Desktop was not running on this machine — image sizes, layer-cache times and `docker history` are all `<<FILL>>` |
 | B2 compose + drills | yes | no | the four drills are scripted but not executed |
 | B3 metrics/Prom/Grafana | yes | no | dashboard JSON is hand-built and **not yet loaded into a running Grafana**; panel screenshots and every threshold number are outstanding |
@@ -52,6 +52,9 @@ distinction matters for marking, so it is stated per item rather than hidden.
    and carol's `rm` returns `Operation not permitted` as required.
 4. **`depends_on: !reset []`** in `docker/drills/28b-dns.yml` needs Compose
    v2.24+. A plain-`docker run` fallback is in the file's comments.
+
+**Scenario A is complete (82/82 marks attempted).** Every task from A1 to A5 has
+been executed on the VPS and has a transcript in `scenario-a/evidence/`.
 5. **Multi-arch builds double CI time.** If Actions minutes become a constraint,
    drop `linux/arm64` and say so in ANSWERS rather than letting builds time out.
 

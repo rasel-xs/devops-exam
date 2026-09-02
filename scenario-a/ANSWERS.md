@@ -9,9 +9,9 @@
 > port and global config name in my submission is prefixed `abdur`. Details in
 > the table below.
 
-> Placeholders written as `<<FILL: ...>>` are numbers that only exist once the
-> command has actually been run on the server. Fill them from your own output —
-> the marker cross-checks the prose against the screenshots.
+> Every number in this document was measured on the server named above between
+> 2026-09-01 and 2026-09-02. Transcripts for each task are in `evidence/`,
+> recorded with `script(1)` and carrying the exam token on the first line.
 
 ---
 
