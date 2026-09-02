@@ -24,9 +24,9 @@ distinction matters for marking, so it is stated per item rather than hidden.
 
 | Area | Written | Run on real infra | What is missing |
 | --- | --- | --- | --- |
-| A1 users/ACL/sudo | yes | no | run `setup-users.sh` + `verify-a1.sh`, capture the 12-row proof table |
-| A2 port forensics | n/a (live task) | no | must be done interactively on the VPS |
-| A3 healthcheck.sh | yes, and unit-exercised locally | partially | tested on macOS: exit 2, exit 1, no-hang and the mixed pass/fail summary all verified. Not yet run under cron on the VPS, and the `flock` concurrency guard is **untested** because macOS has no `flock` |
+| A1 users/ACL/sudo | yes | **DONE** | `verify-a1.sh` PASS=12 FAIL=0, `evidence/a1-proof-table.txt` |
+| A2 port forensics | yes | **DONE** | tasks 5-8, `evidence/a2-session.txt` + `a2-task8-from-laptop.txt` |
+| A3 healthcheck.sh | yes | **DONE** | tasks 9-11 incl. the flock guard and two cron runs, `evidence/a3-session.txt` |
 | A4 systemd | yes | no | crash loop, journalctl queries, watchdog timing all need the VPS |
 | A5 nginx | yes | no | all measured numbers (distribution, failover counts, 504 timings, 429 counts) are `<<FILL>>` |
 | B1 Dockerfiles | yes | no | Docker Desktop was not running on this machine — image sizes, layer-cache times and `docker history` are all `<<FILL>>` |
@@ -43,14 +43,13 @@ distinction matters for marking, so it is stated per item rather than hidden.
    most likely to need adjusting in the UI. A dashboard with no data is
    explicitly called out in the brief as a viva trigger — so these panels must
    be confirmed against real data before submission, not assumed.
-2. **`healthcheck.sh`'s `flock` guard is untested.** It falls back to a loud
-   warning when `flock` is absent (which is how I found the bug where a missing
-   binary read as "lock held"), but the actual two-copies-at-once behaviour has
-   only been reasoned about, not observed. Test on the VPS with the command in
-   `configs/crontab-entry.txt`.
-3. **`chattr +i` depends on the filesystem.** It works on ext4/xfs and not on
-   overlayfs or tmpfs. If `/srv` on the VPS turns out to be something exotic,
-   task 3 needs a different approach and the ANSWERS entry must say so.
+2. ~~`healthcheck.sh`'s `flock` guard is untested.~~ **Now verified on the VPS**
+   (2026-09-02 20:14:41-51): a slow run held the lock for 9s while a second
+   copy started at 20:14:43, declined, and exited 0. Testing it also surfaced a
+   real bug — an unopenable lock file was killing the run before it reached the
+   config check — now fixed.
+3. ~~`chattr +i` depends on the filesystem.~~ **Confirmed ext4 on this VPS**,
+   and carol's `rm` returns `Operation not permitted` as required.
 4. **`depends_on: !reset []`** in `docker/drills/28b-dns.yml` needs Compose
    v2.24+. A plain-`docker run` fallback is in the file's comments.
 5. **Multi-arch builds double CI time.** If Actions minutes become a constraint,

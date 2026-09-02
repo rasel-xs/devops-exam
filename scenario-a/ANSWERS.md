@@ -316,34 +316,76 @@ Two details that are easy to get wrong:
 
 ### Task 10 — Break tests
 
+Full transcript: [`evidence/a3-session.txt`](evidence/a3-session.txt).
+
 **Break 1: a config file that does not exist.**
 
 ```
-$ ./healthcheck.sh /nope/nope.conf ; echo "exit=$?"
-ERROR config file not found or unreadable: /nope/nope.conf
-exit=2
+ERROR config file not found or unreadable: /nope/does-not-exist.conf
+exit code = 2
 ```
 
-Works as specified. I test `-f` **and** `-r` separately, because a file that
-exists but is mode `0600 root:root` read by the cron user is a different and
-more confusing failure than a missing one, and both must be exit 2 rather than
-"zero services checked, all healthy".
+**Break 1b: a config file that EXISTS but is unreadable.** I added this case
+myself — the brief only asks for "missing", but under cron the failure that
+actually happens is a file that exists with the wrong owner or mode. Both must
+be exit 2, never "0 services checked, all healthy", which is why the guard
+tests `-f` *and* `-r` separately.
 
-**Break 2: a URL that does not resolve** (`configs/checks-broken.conf`).
+Run as `abdur_alice` against a mode-000 file:
+
+```
+warning: cannot open lock file /var/lock/abdur-healthcheck.lock -- running WITHOUT a concurrency lock
+warning: cannot write /var/log/abdur-healthcheck.log, logging to stderr
+[WARN] cannot open lock file /var/lock/abdur-healthcheck.lock (running as abdur_alice) -- no lock held
+ERROR config file not found or unreadable: /tmp/abdur-unreadable.conf
+exit code = 2
+```
+
+Three degradations at once, and the script still did its job and returned the
+right code. **This test found a real bug** — see below.
+
+**Break 2: a URL that does not resolve at all.**
 
 ```
 [ OK ] app-1      http://127.0.0.1:3101/healthz   200 in 3ms
-[FAIL] bad-dns    http://doesnotexist.invalid/    got 000, expected 200 (curl exit 6: could not resolve host) in 4ms
-[FAIL] bad-port   http://127.0.0.1:59999/healthz  got 000, expected 200 (curl exit 7: could not connect) in 0ms
+[FAIL] bad-dns    http://doesnotexist.invalid/    got 000, expected 200 (curl exit 6: could not resolve host) in 5ms
+[FAIL] bad-port   http://127.0.0.1:59999/healthz  got 000, expected 200 (curl exit 7: could not connect) in 1ms
 [BAD ] malformed line: this-line-is-malformed
-3 of 4 checks FAILED
-exit=1
+ 3 of 4 checks FAILED
+
+real    0m0.550s
+exit code = 1
 ```
 
-No hang, no crash: curl reports `000` with exit 6, the run finishes in well
-under a second, the exit code is 1. I map curl's exit codes (6 resolve, 7
-connect, 28 timeout) to English, because "expected 200 got 000" on its own does
-not tell you whether DNS, the network or the app is at fault.
+No hang, no crash: **0.55 seconds** for the whole run, exit 1. curl's exit codes
+are translated into English (6 resolve, 7 connect, 28 timeout) because
+"expected 200 got 000" does not tell you whether DNS, the network or the app is
+at fault. The malformed line is reported as `[BAD ]` and counted as a failure
+rather than silently skipped.
+
+### Task 9 requirement 7 — proving the lock
+
+`slow.conf` points at three unrouted `10.255.255.x` addresses, so each check
+sits for the full 3s connect timeout and the run takes ~9s — a wide enough
+window to start a second copy by hand:
+
+```
+20:14:41  first copy starts (pid 221295, slow.conf)
+20:14:43  second copy starts, cannot take the lock, logs and exits 0
+20:14:44  blackhole-1 fails after 3003ms
+20:14:47  blackhole-2 fails after 3009ms
+20:14:50  blackhole-3 fails after 3005ms
+20:14:51  first copy ends, exit 1
+```
+
+```
+second copy exit code = 0
+[INFO] another healthcheck.sh is still running (lock /var/lock/abdur-healthcheck.lock held) -- exiting quietly
+```
+
+Exit **0** and not an error: a second copy declining to run is normal
+operation, not a fault. If it exited non-zero, cron would email an alert every
+five minutes for something working exactly as designed.
 
 ### Bugs I only found by running it — and one wrong diagnosis
 
@@ -359,13 +401,22 @@ These were invisible on a read-through:
    take the timing from curl's own `%{time_total}`, which is more accurate
    anyway since it measures the request rather than the shell around it.
 
-2. **A missing `flock` binary read as "lock held".** `if ! flock -n 200` is
+2. **An unopenable lock file killed the whole run.** Found by break test 1b,
+   not by reading. As `abdur_alice` the script could not open
+   `/var/lock/abdur-healthcheck.lock`, so it exited 1 *before reaching the
+   config check* and checked nothing at all. Under cron as any non-root user
+   that would have meant permanently silent monitoring — the exact failure I
+   had already guarded against for a missing `flock` binary, but not here. It
+   now warns loudly and continues without a lock, which is the same policy
+   applied consistently.
+
+3. **A missing `flock` binary read as "lock held".** `if ! flock -n 200` is
    true when `flock` does not exist (exit 127), so on macOS the script exited
    0 without checking anything at all. A monitoring script that silently does
    nothing is worse than one that crashes, so its absence is now a loud
    warning.
 
-3. **A wrong diagnosis I corrected by experiment.** I originally believed the
+4. **A wrong diagnosis I corrected by experiment.** I originally believed the
    single-check symptom in bug 1 was caused by `curl` inheriting the loop's
    stdin — the config file — and consuming the remaining lines. I had changed
    `< /dev/null` and the timing code in the same edit, and credited the wrong
@@ -392,18 +443,64 @@ These were invisible on a read-through:
 
 ### Task 11 — cron
 
-[`configs/crontab-entry.txt`](configs/crontab-entry.txt). `PATH` is set explicitly in the
-crontab because cron's environment is nearly empty — the single most common
-reason a script that "works when I run it" does nothing from cron.
+[`configs/crontab-entry.txt`](configs/crontab-entry.txt), appended to root's
+crontab:
 
 ```
 */5 * * * * /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/checks.conf >/dev/null
 ```
 
-Evidence: `crontab -l` and `tail /var/log/abdur-healthcheck.log` showing at least two
-distinct run timestamps — `evidence/a3-cron.png`.
+`PATH` is set explicitly in the crontab because cron's environment is nearly
+empty — the single most common reason a script that "works when I run it" does
+nothing from cron. Here it matters concretely: the script lives in
+`/usr/local/bin`, which is not on cron's default `PATH`.
 
----
+**Shared-machine note.** root's crontab already contained another student's
+entry:
+
+```
+*/5 * * * * /srv/app/scripts/healthcheck.sh /srv/app/scripts/checks.conf
+```
+
+so I appended rather than replaced:
+
+```bash
+crontab -l 2>/dev/null | cat - configs/crontab-entry.txt | crontab -
+```
+
+`crontab configs/crontab-entry.txt` would have silently deleted their job. My
+`PATH=` and `SHELL=` assignments sit *below* their line, and cron applies
+variable assignments only to the entries that follow them, so their job is
+unaffected. On a shared box the cleaner answer is a dedicated
+`/etc/cron.d/abdur-healthcheck` file, which does not touch anyone's personal
+crontab at all — I used the personal crontab only because the brief asks for
+`crontab -l` as the evidence.
+
+**Two separate cron runs**, from `/var/log/abdur-healthcheck.log`:
+
+```
+2026-09-02T20:10:02 [INFO]  run start config=/etc/abdur-healthcheck/checks.conf pid=219248
+2026-09-02T20:10:02 [INFO]  OK   name=app-1 ... code=200 ms=2
+2026-09-02T20:10:02 [INFO]  OK   name=app-2 ... code=200 ms=3
+2026-09-02T20:10:03 [ERROR] FAIL name=nginx ... curl_rc=7
+2026-09-02T20:10:04 [ERROR] run end status=degraded checked=3 failures=1 exit=1
+
+2026-09-02T20:15:01 [INFO]  run start config=/etc/abdur-healthcheck/checks.conf pid=221496
+2026-09-02T20:15:01 [INFO]  OK   name=app-1 ... code=200 ms=2
+2026-09-02T20:15:02 [INFO]  OK   name=app-2 ... code=200 ms=7
+2026-09-02T20:15:02 [ERROR] FAIL name=nginx ... curl_rc=7
+2026-09-02T20:15:02 [ERROR] run end status=degraded checked=3 failures=1 exit=1
+```
+
+Distinct PIDs and five minutes apart. How to tell a cron run from one of my
+manual runs in the same log: cron fires at **:01 to :04 seconds** past the
+minute, because it wakes once a minute and then does its work. A `20:05:18`
+entry in the same log is one of my own hand-runs, not cron — filtering on the
+minute alone is not enough.
+
+The `nginx` check fails in every run because nginx is not installed yet (A5).
+That is deliberate: it gives the "both a passing and a failing service" output
+the brief asks for, in real recurring data rather than a staged one-off.
 
 ## A4 — systemd
 
