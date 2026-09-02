@@ -345,22 +345,50 @@ under a second, the exit code is 1. I map curl's exit codes (6 resolve, 7
 connect, 28 timeout) to English, because "expected 200 got 000" on its own does
 not tell you whether DNS, the network or the app is at fault.
 
-### Three bugs I only found by running it
+### Bugs I only found by running it — and one wrong diagnosis
 
-These were all invisible on a read-through and obvious on the first execution:
+These were invisible on a read-through:
 
-1. **curl was eating the config file.** Inside `while read ... done < "$CONFIG"`
-   the loop's stdin *is* the config file, and curl inherits it and consumes the
-   rest. The script checked the first service, reported `all 1 checks passed`,
-   and silently ignored the other three. Fix: `curl ... < /dev/null`.
-2. **`date +%s%N` is GNU-only.** On macOS `%N` is literal and the arithmetic
-   blew up with `value too great for base`. Fix: use curl's own
-   `%{time_total}` — it is more accurate anyway, since it measures the request
-   rather than the shell around it.
-3. **A missing `flock` binary read as "lock held".** `if ! flock -n 200` is
-   true when `flock` does not exist (exit 127), so the script exited 0 without
-   checking anything at all. A monitoring script that silently does nothing is
-   worse than one that crashes, so the absence is now a loud warning.
+1. **`date +%s%N` is GNU-only, and it took the whole loop down with it.** On
+   macOS `%N` is not expanded, so the expression became
+   `(( 1788281524N - start ) / 1000000 )`, bash reported *value too great for
+   base*, and the script checked **one** service out of four before reporting
+   `all 1 checks passed`. The reason it stopped is worth stating precisely: a
+   failing arithmetic expansion aborts the **entire enclosing compound
+   command**, so the `while` loop was abandoned, not just that iteration. Fix:
+   take the timing from curl's own `%{time_total}`, which is more accurate
+   anyway since it measures the request rather than the shell around it.
+
+2. **A missing `flock` binary read as "lock held".** `if ! flock -n 200` is
+   true when `flock` does not exist (exit 127), so on macOS the script exited
+   0 without checking anything at all. A monitoring script that silently does
+   nothing is worse than one that crashes, so its absence is now a loud
+   warning.
+
+3. **A wrong diagnosis I corrected by experiment.** I originally believed the
+   single-check symptom in bug 1 was caused by `curl` inheriting the loop's
+   stdin — the config file — and consuming the remaining lines. I had changed
+   `< /dev/null` and the timing code in the same edit, and credited the wrong
+   one.
+
+   Testing it separately disproved it:
+
+   ```
+   printf 'a\nb\nc\n' | while read -r l; do echo "read: $l"; curl ... ; done
+     read: a      read: b      read: c        <- curl reads all three
+   printf 'a\nb\nc\n' | while read -r l; do echo "read: $l"; cat >/dev/null; done
+     read: a                                  <- cat eats the rest
+   ```
+
+   **curl does not read stdin for a plain GET**, so `< /dev/null` fixed
+   nothing. It stays in the script as cheap insurance, because `ssh`, `mysql`,
+   `ffmpeg` and `cat` genuinely do drain stdin and will silently swallow the
+   rest of a config file in exactly this loop shape — `ssh -n` exists for
+   precisely this reason. But the honest description is "defensive habit", not
+   "this fixed my bug".
+
+   The lesson is the one that produced the wrong answer in the first place:
+   **change one thing at a time**, or you cannot tell which change was the fix.
 
 ### Task 11 — cron
 

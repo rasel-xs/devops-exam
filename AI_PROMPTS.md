@@ -44,8 +44,50 @@ make the answer work on my machine.
   Scenario C was truncated).
 - **What actually fixed it:** <fill in what you had to change once you ran it>
 
+### 2. AI told me curl was eating my config file. It was not.
+
+- **Stuck on:** `healthcheck.sh` read a 4-line config and reported
+  `all 1 checks passed`. It checked the first service and silently ignored the
+  rest — no error, exit code 0.
+- **Prompt:**
+  ```
+  My bash script reads a config file with `while IFS= read -r line; do ... done
+  < "$CONFIG"` and runs curl inside the loop. It only processes the first line
+  and then exits the loop as if the file ended. Why?
+  ```
+- **Answer I got:** That curl inherits the loop's stdin — which is the config
+  file — and consumes the remaining lines, so `read` finds EOF on the next
+  iteration. Fix: `curl ... < /dev/null`.
+- **Did it work:** The symptom went away, so I believed it. **But it was the
+  wrong explanation.** I had changed two things in the same edit — added
+  `< /dev/null` AND replaced `date +%s%N` with curl's `%{time_total}` — and
+  credited the wrong one.
+- **How I caught it:** I made a copy of the script with only `< /dev/null`
+  removed and ran both against the same config. **Both processed all 3 lines
+  identically.** So I tested the claim directly:
+
+  ```
+  printf 'a\nb\nc\n' | while read -r l; do echo "read: $l"; curl -s ... ; done
+    read: a   read: b   read: c        <- curl reads all three
+  printf 'a\nb\nc\n' | while read -r l; do echo "read: $l"; cat >/dev/null; done
+    read: a                            <- cat really does eat the rest
+  ```
+
+- **What actually fixed it:** `date +%s%N`. BSD date has no `%N`, so on macOS
+  the expression became `(( 1788281524N - start ) / 1000000 )`, bash reported
+  *value too great for base*, and **a failing arithmetic expansion aborts the
+  entire enclosing compound command** — so the whole `while` loop was
+  abandoned after one iteration, not just that iteration. I confirmed that
+  separately too.
+- **What I kept anyway:** `< /dev/null`, but described honestly as defensive
+  habit rather than a fix. `ssh`, `mysql`, `ffmpeg` and `cat` genuinely do
+  drain stdin in this loop shape — `ssh -n` exists for exactly this reason.
+- **The real lesson:** the stdin story is a well-known, very plausible bash
+  gotcha, which is exactly why both the AI and I accepted it without testing.
+  Change one thing at a time, or you cannot tell which change was the fix.
+
 <!--
-Entries 2-8+: write these as you hit real problems. Good candidates from this exam,
+Entries 3-8+: write these as you hit real problems. Good candidates from this exam,
 if they happen to you:
   - dan can ls but not cat (ACL vs directory x bit)
   - carol cannot rm her own files (sticky bit)

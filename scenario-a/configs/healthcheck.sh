@@ -120,13 +120,17 @@ while IFS= read -r line || [ -n "$line" ]; do
   # DNS+TCP phase. Both are needed: a host that accepts the connection and then
   # says nothing would otherwise sit past the 3 second budget.
   #
-  # `< /dev/null` is not decoration. Without it curl inherits the loop's stdin,
-  # which IS the config file, and reads the remaining lines out from under the
-  # while loop -- my first version silently checked only the first service and
-  # cheerfully reported "all 1 checks passed".
+  # `< /dev/null` is defensive, not a fix for an observed bug. I tested it:
+  # curl does NOT read stdin for a plain GET, so removing it changes nothing
+  # here. It stays because the habit matters -- ssh, mysql, ffmpeg and cat DO
+  # drain stdin, and any of them inside a `while read ... done < file` loop
+  # will silently eat the rest of the file. Cheap insurance, no cost.
   #
-  # Timing comes from curl's own %{time_total} rather than `date +%s%N`,
-  # because BSD date has no %N and emitted a literal "N" when I tested on macOS.
+  # Timing comes from curl's own %{time_total} rather than `date +%s%N`.
+  # THIS one was a real bug: BSD date has no %N, so on macOS the expression
+  # became `(1788281524N - start)`, the arithmetic failed, and a failing
+  # $(( )) aborts the whole enclosing while loop -- the script checked one
+  # service and reported "all 1 checks passed".
   curl_out=$(curl -s -o /dev/null \
                   --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_TIMEOUT" \
                   -w '%{http_code} %{time_total}' "$url" < /dev/null 2>/dev/null)
