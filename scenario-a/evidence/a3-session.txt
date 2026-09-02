@@ -1,0 +1,128 @@
+Script started on 2026-09-02 20:14:40+02:00 [COMMAND="bash configs/a3-tests.sh" TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="157" LINES="46"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Wed Sep  2 20:14:40 CEST 2026
+
+============ TASK 9: normal run -- a passing and a failing service ============
+[1m== healthcheck 2026-09-02 20:14:40 ==[0m  config: /etc/abdur-healthcheck/checks.conf
+  [0;32m[ OK ][0m app-1      http://127.0.0.1:3101/healthz              200 in 72ms
+  [0;32m[ OK ][0m app-2      http://127.0.0.1:3102/healthz              200 in 2ms
+  [0;31m[FAIL][0m nginx      http://127.0.0.1:8110/                     got 000, expected 200 (curl exit 7: could not connect -- nothing listening / refused) in 0ms
+  [0;32m[ OK ][0m disk       / is 9% full (89G free)
+[1m[0;31m 1 of 3 checks FAILED[0m
+exit code = 1   (1 = at least one service failed)
+
+============ TASK 10 break test 1: config file that does not exist ============
+[0;31mERROR[0m config file not found or unreadable: /nope/does-not-exist.conf
+exit code = 2   (2 = config missing or unreadable, as specified)
+
+============ TASK 10 break test 1b: config that EXISTS but is unreadable ============
+[0;33mwarning: cannot open lock file /var/lock/abdur-healthcheck.lock -- running WITHOUT a concurrency lock[0m
+[0;33mwarning: cannot write /var/log/abdur-healthcheck.log, logging to stderr[0m
+2026-09-02T20:14:40+0200 [vmi3536696] [WARN] cannot open lock file /var/lock/abdur-healthcheck.lock (running as abdur_alice) -- no lock held
+[0;31mERROR[0m config file not found or unreadable: /tmp/abdur-unreadable.conf
+2026-09-02T20:14:40+0200 [vmi3536696] [ERROR] config file not found or unreadable: /tmp/abdur-unreadable.conf (exit 2)
+exit code = 2   (expecting 2: existing but unreadable is still a config failure)
+
+============ TASK 10 break test 2: a URL that does not resolve at all ============
+--- the config ---
+# Task 10 break test #2: a host that does not resolve at all, plus a port with
+# nothing listening, plus a malformed line. The script must report all three and
+# exit 1 -- never hang, never crash.
+app-1|http://127.0.0.1:3101/healthz|200
+bad-dns|http://doesnotexist.invalid/|200
+bad-port|http://127.0.0.1:59999/healthz|200
+this-line-is-malformed
+
+--- running it (timing it, to prove it does not hang) ---
+[1m== healthcheck 2026-09-02 20:14:40 ==[0m  config: configs/checks-broken.conf
+  [0;32m[ OK ][0m app-1      http://127.0.0.1:3101/healthz              200 in 3ms
+  [0;31m[FAIL][0m bad-dns    http://doesnotexist.invalid/               got 000, expected 200 (curl exit 6: could not resolve host) in 5ms
+  [0;31m[FAIL][0m bad-port   http://127.0.0.1:59999/healthz             got 000, expected 200 (curl exit 7: could not connect -- nothing listening / refused) in 1ms
+  [0;31m[BAD ][0m malformed line: this-line-is-malformed
+  [0;32m[ OK ][0m disk       / is 9% full (89G free)
+[1m[0;31m 3 of 4 checks FAILED[0m
+
+real	0m0.550s
+user	0m0.094s
+sys	0m0.499s
+exit code = 1   (1 = failures, and it finished in about a second)
+
+============ TASK 9 requirement 7: two copies must not run at once ============
+Starting a slow run in the background (3 blackholed IPs, ~9s)...
+First copy is PID 221295 and still running:
+ 221295       00:02 bash /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/slow.conf
+
+Now starting a SECOND copy while the first still holds the lock:
+second copy exit code = 0   (0 = it declined quietly, as cron requires)
+
+--- what the log says about it ---
+2026-09-02T20:08:20+0200 [vmi3536696] [INFO] another healthcheck.sh is still running (lock /var/lock/abdur-healthcheck.lock held) -- exiting quietly
+2026-09-02T20:11:38+0200 [vmi3536696] [INFO] another healthcheck.sh is still running (lock /var/lock/abdur-healthcheck.lock held) -- exiting quietly
+2026-09-02T20:14:43+0200 [vmi3536696] [INFO] another healthcheck.sh is still running (lock /var/lock/abdur-healthcheck.lock held) -- exiting quietly
+
+Waiting for the first copy to finish...
+first copy exit code = 1
+--- and its output, to show it really was working the whole time ---
+== healthcheck 2026-09-02 20:14:41 ==  config: /etc/abdur-healthcheck/slow.conf
+  [FAIL] blackhole-1 http://10.255.255.1/                       got 000, expected 200 (curl exit 28: timed out after 3s) in 3003ms
+  [FAIL] blackhole-2 http://10.255.255.2/                       got 000, expected 200 (curl exit 28: timed out after 3s) in 3009ms
+  [FAIL] blackhole-3 http://10.255.255.3/                       got 000, expected 200 (curl exit 28: timed out after 3s) in 3005ms
+  [ OK ] disk       / is 9% full (89G free)
+ 3 of 3 checks FAILED
+
+============ TASK 11: cron ============
+--- crontab -l ---
+*/5 * * * * /srv/app/scripts/healthcheck.sh /srv/app/scripts/checks.conf
+# A3 task 11 -- install with `crontab -e` as root, or:
+#   sudo cp healthcheck.sh /usr/local/bin/ && sudo chmod 755 /usr/local/bin/abdur-healthcheck.sh
+#   sudo mkdir -p /etc/abdur-healthcheck && sudo cp checks.conf /etc/abdur-healthcheck/
+#   sudo touch /var/log/abdur-healthcheck.log && sudo chmod 640 /var/log/abdur-healthcheck.log
+#   sudo crontab -l 2>/dev/null | cat - crontab-entry.txt | sudo crontab -
+#
+# cron runs with a near-empty environment: PATH is normally just
+# /usr/bin:/bin, so `flock`, `curl` and `awk` resolve but anything installed in
+# /usr/local/bin does not. Setting PATH explicitly is why this works from cron
+# and not just from my shell.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+
+# stdout goes to /dev/null because the script already writes the detail to
+# /var/log/abdur-healthcheck.log; stderr is kept so cron mails real breakage.
+*/5 * * * * /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/checks.conf >/dev/null
+
+# To prove the flock guard for task 9 requirement 7, run this and watch the
+# second copy exit 0 immediately while the first is still sleeping:
+#   /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/slow.conf & sleep 1; \
+#   /usr/local/bin/abdur-healthcheck.sh /etc/abdur-healthcheck/checks.conf; echo "second exit=$?"
+#   grep 'still running' /var/log/abdur-healthcheck.log
+
+--- log entries from cron runs (look for distinct timestamps) ---
+2026-09-02T20:11:42+0200 [vmi3536696] [ERROR] FAIL name=blackhole-2 url=http://10.255.255.2/ code=000 expected=200 curl_rc=28 ms=3002
+2026-09-02T20:11:45+0200 [vmi3536696] [ERROR] FAIL name=blackhole-3 url=http://10.255.255.3/ code=000 expected=200 curl_rc=28 ms=3003
+2026-09-02T20:11:45+0200 [vmi3536696] [INFO] OK   disk / at 9% (89G free)
+2026-09-02T20:11:45+0200 [vmi3536696] [ERROR] run end status=degraded checked=3 failures=3 exit=1
+2026-09-02T20:14:40+0200 [vmi3536696] [INFO] run start config=/etc/abdur-healthcheck/checks.conf pid=221168
+2026-09-02T20:14:40+0200 [vmi3536696] [INFO] OK   name=app-1 url=http://127.0.0.1:3101/healthz code=200 expected=200 ms=72
+2026-09-02T20:14:40+0200 [vmi3536696] [INFO] OK   name=app-2 url=http://127.0.0.1:3102/healthz code=200 expected=200 ms=2
+2026-09-02T20:14:40+0200 [vmi3536696] [ERROR] FAIL name=nginx url=http://127.0.0.1:8110/ code=000 expected=200 curl_rc=7 ms=0
+2026-09-02T20:14:40+0200 [vmi3536696] [INFO] OK   disk / at 9% (89G free)
+2026-09-02T20:14:40+0200 [vmi3536696] [ERROR] run end status=degraded checked=3 failures=1 exit=1
+2026-09-02T20:14:40+0200 [vmi3536696] [ERROR] config file not found or unreadable: /nope/does-not-exist.conf (exit 2)
+2026-09-02T20:14:40+0200 [vmi3536696] [INFO] run start config=configs/checks-broken.conf pid=221239
+2026-09-02T20:14:41+0200 [vmi3536696] [INFO] OK   name=app-1 url=http://127.0.0.1:3101/healthz code=200 expected=200 ms=3
+2026-09-02T20:14:41+0200 [vmi3536696] [ERROR] FAIL name=bad-dns url=http://doesnotexist.invalid/ code=000 expected=200 curl_rc=6 ms=5
+2026-09-02T20:14:41+0200 [vmi3536696] [ERROR] FAIL name=bad-port url=http://127.0.0.1:59999/healthz code=000 expected=200 curl_rc=7 ms=1
+2026-09-02T20:14:41+0200 [vmi3536696] [ERROR] malformed config line: this-line-is-malformed
+2026-09-02T20:14:41+0200 [vmi3536696] [INFO] OK   disk / at 9% (89G free)
+2026-09-02T20:14:41+0200 [vmi3536696] [ERROR] run end status=degraded checked=4 failures=3 exit=1
+2026-09-02T20:14:41+0200 [vmi3536696] [INFO] run start config=/etc/abdur-healthcheck/slow.conf pid=221295
+2026-09-02T20:14:43+0200 [vmi3536696] [INFO] another healthcheck.sh is still running (lock /var/lock/abdur-healthcheck.lock held) -- exiting quietly
+2026-09-02T20:14:44+0200 [vmi3536696] [ERROR] FAIL name=blackhole-1 url=http://10.255.255.1/ code=000 expected=200 curl_rc=28 ms=3003
+2026-09-02T20:14:47+0200 [vmi3536696] [ERROR] FAIL name=blackhole-2 url=http://10.255.255.2/ code=000 expected=200 curl_rc=28 ms=3009
+2026-09-02T20:14:50+0200 [vmi3536696] [ERROR] FAIL name=blackhole-3 url=http://10.255.255.3/ code=000 expected=200 curl_rc=28 ms=3005
+2026-09-02T20:14:51+0200 [vmi3536696] [INFO] OK   disk / at 9% (89G free)
+2026-09-02T20:14:51+0200 [vmi3536696] [ERROR] run end status=degraded checked=3 failures=3 exit=1
+
+============ END ============
+
+Script done on 2026-09-02 20:14:51+02:00 [COMMAND_EXIT_CODE="0"]
