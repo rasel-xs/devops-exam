@@ -69,10 +69,25 @@ curl_reason() {
 # running copy. Taken before the config check so a stampede cannot happen
 # even when the config is broken.
 if command -v flock >/dev/null 2>&1; then
-  exec 200>"$LOCKFILE" || { echo "cannot open lock file $LOCKFILE" >&2; exit 1; }
-  if ! flock -n 200; then
-    log INFO "another healthcheck.sh is still running (lock $LOCKFILE held) -- exiting quietly"
-    exit 0
+  # The lock file may be unopenable -- most obviously when the script runs as a
+  # user who cannot write /var/lock, which is exactly what happens if cron is
+  # ever moved off root. The first version treated that as fatal and exited 1,
+  # so the script checked NOTHING and reported a generic failure. That is the
+  # same silent-monitoring failure as a missing flock binary, so it gets the
+  # same treatment: complain loudly, then carry on doing the actual job.
+  #
+  # The braces plus `2>/dev/null` keep bash's own redirection error off the
+  # terminal; a failing `exec` with only redirections returns non-zero here
+  # rather than killing the shell.
+  if { exec 200>"$LOCKFILE"; } 2>/dev/null; then
+    if ! flock -n 200; then
+      log INFO "another healthcheck.sh is still running (lock $LOCKFILE held) -- exiting quietly"
+      exit 0
+    fi
+  else
+    printf '%swarning: cannot open lock file %s -- running WITHOUT a concurrency lock%s\n' \
+      "$YELLOW" "$LOCKFILE" "$RESET" >&2
+    log WARN "cannot open lock file $LOCKFILE (running as $(id -un)) -- no lock held"
   fi
 else
   # flock is util-linux and is present on Ubuntu; it is NOT on macOS. The first

@@ -25,7 +25,7 @@ hr "TASK 10 break test 1b: config that EXISTS but is unreadable"
 # This is the one that bites in cron, where the job may run as another user.
 install -m 000 /dev/null /tmp/abdur-unreadable.conf
 sudo -u abdur_alice "$HC" /tmp/abdur-unreadable.conf
-echo "exit code = $?   (2 = correct: existence is not the same as readability)"
+echo "exit code = $?   (expecting 2: existing but unreadable is still a config failure)"
 rm -f /tmp/abdur-unreadable.conf
 
 hr "TASK 10 break test 2: a URL that does not resolve at all"
