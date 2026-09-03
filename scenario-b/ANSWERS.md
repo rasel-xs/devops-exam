@@ -1296,74 +1296,128 @@ rather than an absence of data.
 
 ### Task 34 — Fix one problem and prove it
 
-Problem fixed: **`<<FILL: 3 — the missing index on tags.note_id>>`**
+Problem fixed: **3 — the missing index on `tags.note_id`**. Chosen from the
+dashboard rather than from reading the code: panel D showed `tags_for_note` at
+**328 req/s** against ~4 req/s for everything else, and panel F showed up to
+**358 req/s** of those exceeding 50 ms. Duration × frequency, not duration.
+Evidence: `evidence/b3-task34.txt`, `evidence/b3-task34-writecost.txt`.
 
 ```sql
 -- before
-EXPLAIN ANALYZE SELECT name FROM tags WHERE note_id = 12345;
--- <<FILL: Seq Scan on tags ... rows=150000 ... actual time=X>>
+EXPLAIN (ANALYZE, BUFFERS) SELECT name FROM tags WHERE note_id = 12345;
+ Seq Scan on tags  (cost=0.00..2739.04 rows=4) (actual time=0.080..19.077 rows=6)
+   Filter: (note_id = 12345)
+   Rows Removed by Filter: 149997
+   Buffers: shared hit=864
+ Execution Time: 19.135 ms
 
-CREATE INDEX idx_tags_note_id ON tags (note_id);
-ANALYZE tags;
+CREATE INDEX idx_tags_note_id ON tags (note_id);     -- 2634.9 ms
+ANALYZE tags;                                        --   56.2 ms
 
 -- after
-EXPLAIN ANALYZE SELECT name FROM tags WHERE note_id = 12345;
--- <<FILL: Index Scan using idx_tags_note_id ... actual time=Y>>
+ Bitmap Heap Scan on tags  (cost=4.33..19.58 rows=4) (actual time=0.067..0.113 rows=6)
+   Heap Blocks: exact=6
+   Buffers: shared hit=7 read=1
+   ->  Bitmap Index Scan on idx_tags_note_id (actual time=0.053..0.053 rows=6)
+ Execution Time: 0.211 ms
 ```
 
-Improvement: `<<FILL: X>>ms → `<<FILL: Y>>`ms, `<<FILL>>`×.
+**The plan changing is the proof; the timing is the consequence.** `Rows
+Removed by Filter: 149997` is the whole problem in one line — Postgres read
+every tag row in the table to return six.
 
-Postgres does **not** create an index on the referencing side of a foreign key.
-It requires a unique index on the *referenced* side (the primary key, which
-exists), because that is what the constraint needs to validate. The referencing
-column gets nothing, which is why `tags.note_id` was unindexed despite being a
-declared foreign key. This also makes deletes on `notes` slow, since every
-delete must scan `tags` to check the constraint.
+| Measurement | Before | After | Improvement |
+| --- | --- | --- | --- |
+| `EXPLAIN` execution time | 19.135 ms | 0.211 ms | **91×** |
+| **Buffers touched** | **864** | **8** | **108×** |
+| 100 sequential lookups | 2474.9 ms | 25.0 ms | **99×** |
+| `GET /api/notes?limit=20` | 2.255 s | 0.283 s | **8×** |
+| `GET /api/notes?limit=2000` | **> 120 s (timed out)** | **16.06 s** | — |
 
-Grafana panel spanning both periods with a deploy annotation:
-`evidence/b3-fix-before-after.png`.
+**Buffers, not milliseconds, is the number to quote.** Wall-clock moves with
+cache warmth, with load, and on this shared VPS with whatever the other
+students are doing. `864 → 8` buffers is a direct count of work performed and
+is nearly immune to all of that. `ANALYZE tags` matters as much as the
+`CREATE INDEX`: the planner chooses on statistics, and with stale ones it will
+keep picking the sequential scan it has always picked. That is the real reason
+behind "I added an index and nothing got faster".
 
-**What the fix cost.**
+**Why the index was missing at all.** Postgres does **not** index the
+*referencing* side of a foreign key. The constraint needs a unique index on the
+*referenced* side — `notes.id`, the primary key, which exists — and the
+referencing column gets nothing. So `tags.note_id` was unindexed despite being
+a declared foreign key. The same gap also makes `DELETE FROM notes` slow, since
+each delete has to scan `tags` to check the constraint.
 
-```sql
-SELECT pg_size_pretty(pg_relation_size('idx_tags_note_id'));   -- <<FILL: e.g. 3.3 MB>>
-SELECT pg_size_pretty(pg_relation_size('tags'));               -- <<FILL>>
+**What the fix cost on disk:** index **2216 kB** against a 7744 kB heap — about
+29%, and `pg_total_relation_size('tags')` went from 11 MB to 13 MB.
+
+**What the fix cost on writes — and how I got that wrong twice.**
+
+*First attempt:* 10,000-row INSERT took **731.6 ms** before and **464.7 ms**
+after. The index apparently made writes faster, which is not possible. The
+measurement was unfair: the "before" run extended the heap into fresh pages
+with a cold cache, then 10,000 rows were DELETEd, leaving free space that the
+"after" run reused. The heap grew only 512 kB across 20,000 inserted rows,
+which gives it away.
+
+*Second attempt:* three runs per condition, `VACUUM` before each, conditions
+alternated so any drift hit both sides equally.
+
+```
+with index:     345, 445, 388 ms      spread 100
+without index:  539, 383, 931 ms      spread 548
 ```
 
-| | Before | After |
-| --- | --- | --- |
-| Disk | — | `<<FILL>>` for the index |
-| `INSERT` of 10,000 tags | `<<FILL>>ms` | `<<FILL>>ms` |
-| `SELECT ... WHERE note_id=$1` | `<<FILL>>ms` | `<<FILL>>ms` |
+**Inconclusive, and that is the finding.** The run-to-run spread without the
+index (548 ms) is larger than any plausible effect. On a shared VPS the noise
+floor is above the signal. The means would have said "the index makes INSERTs
+faster", which is nonsense — a good demonstration that averaging noisy
+measurements does not make them meaningful.
 
-Every write now maintains a b-tree as well as the heap, and the index competes
-for shared buffers. For this workload — read-heavy, writes rare — that is
-obviously worth it. For a write-heavy append-only log it might not be, and that
-is the actual reason not to index everything by reflex.
+*Third attempt — stop timing, count work.* `Buffers` did that job for reads;
+`EXPLAIN (ANALYZE, BUFFERS, WAL)` does it for writes.
+
+| 10,000-row INSERT | with index | without index | difference |
+| --- | --- | --- | --- |
+| WAL records | 30,461 | 20,357 | **+10,104** |
+| WAL bytes | 2,076,606 | 1,421,894 | **+46%** |
+| Buffers | 50,509 | 30,481 | **+20,028** |
+| Execution time | 439 ms | 395 ms | *inside the noise* |
+
+`+10,104` WAL records over 10,000 inserted rows is **one extra WAL record per
+row** — the b-tree insertion — plus about two extra buffer touches each. That
+is the honest cost: roughly 46% more write-ahead log for this table. Real, and
+completely invisible to a stopwatch on this machine.
+
+For this workload — read-heavy, writes rare, `tags_for_note` at 328 req/s
+against occasional inserts — 46% more WAL to remove 108× the read work is not
+a close call. For a write-heavy append-only log it might be, and that is the
+actual argument against indexing everything by reflex.
 
 **Which problem I would fix next, and what I would measure first.**
 
-Next: **the N+1 (Problem 1)**, because panel B says `/api/notes` dominates total
-time and panel E says it is doing 21 queries per request. Note that the index I
-just added makes each of those 21 queries fast, which *masks* the N+1 in a
-latency graph — panel E still shows it plainly. That is a good argument for
+Next: **the N+1 (problem 1)**. The index makes each of the 21 queries fast,
+which *masks* the N+1 in a latency graph — and the measurement above shows
+exactly that: `?limit=2000` went from "does not finish in 120 s" to **16.06 s**,
+which is 2001 round trips at about 8 ms each. Still 2001 round trips. Panel E
+shows it plainly where panel A no longer does, which is the argument for
 keeping a queries-per-request metric permanently.
 
 Before doing it I would measure:
 
-1. `db_queries_per_request` for `/api/notes` at the limits real clients use, to
-   confirm it scales with `limit` rather than being a fixed overhead.
-2. The share of `/api/notes` latency spent in `tags_for_note` — panel B by
-   `query_name`. If tags are only 10% of the request, the N+1 is not the
-   bottleneck and I would be optimising the wrong thing.
+1. `db_queries_per_request` at the limits real clients use, to confirm it
+   scales with `limit` rather than being fixed overhead.
+2. The share of `/api/notes` latency actually spent in `tags_for_note`. If tags
+   are 10% of the request, the N+1 is not the bottleneck.
 3. Round-trip latency to the database. The N+1 is a *round trip* problem: at
-   0.1 ms it is nearly free, at 2 ms across an availability zone it dominates.
-   This is why the same code is fine in dev and awful in production.
-4. The p99 of `limit`, because the N+1's cost is linear in it — `?limit=5000`
-   means 5,001 queries, which is Problems 1 and 4 multiplying each other.
+   0.1 ms it is nearly free, at 2 ms across an availability zone it dominates —
+   which is why the same code is fine in dev and awful in production.
+4. The p99 of `limit`, because the cost is linear in it. `?limit=5000` is 5,001
+   queries: problems 1 and 4 multiplying each other.
 
-Fixing the N+1 and the unbounded limit together is more valuable than either
-alone, which the metrics show and reading the code does not.
+Fixing the N+1 and the unbounded limit together is worth more than either
+alone. The metrics show that; reading the code does not.
 
 ---
 

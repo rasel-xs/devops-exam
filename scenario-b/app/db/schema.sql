@@ -33,6 +33,14 @@ CREATE TABLE IF NOT EXISTS tags (
 -- four problems the exam is actually asking me to find.
 CREATE INDEX IF NOT EXISTS idx_notes_tenant_id ON notes (tenant_id);
 
--- The task 34 fix, applied later and measured before/after. Left commented so
--- the "before" state is reproducible from a clean database:
--- CREATE INDEX idx_tags_note_id ON tags (note_id);
+-- B3 task 34: the fix, measured before and after. Postgres does NOT index the
+-- REFERENCING side of a foreign key -- it needs a unique index on the
+-- REFERENCED side (notes.id, the primary key) to validate the constraint, and
+-- gives the referencing column nothing. So tags.note_id was unindexed despite
+-- being a declared foreign key, and every `WHERE note_id = $1` scanned all
+-- 150,000 rows.
+--
+-- It is created here rather than left commented out, so a fresh deployment
+-- gets the fixed schema. To reproduce the "before" state for the measurement:
+--     DROP INDEX idx_tags_note_id;
+CREATE INDEX IF NOT EXISTS idx_tags_note_id ON tags (note_id);
