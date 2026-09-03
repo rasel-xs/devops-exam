@@ -33,7 +33,37 @@ app.use((req, res, next) => {
   res.setHeader('X-App-Version', APP_VERSION);
 
   db.requestContext.run({ queries: 0 }, () => {
-    res.on('finish', () => {
+    // 'close', NOT 'finish'. B3 task 31 found this the hard way.
+    //
+    // 'finish' fires only when the response was written out completely. If the
+    // client hangs up first -- a curl --max-time, a browser tab closed, an
+    // upstream proxy timing out -- it never fires. The consequences were both
+    // silent and severe:
+    //
+    //   * the slowest requests in the system, the only ones anybody cares
+    //     about, were recorded NOWHERE. During the 5-minute load run,
+    //     notes_list ran 1218 times while http_requests_total{route=
+    //     "/api/notes"} counted 1158. The 60 missing ones were every single
+    //     ?limit=5000 and burst ?limit=200 request: they did all the work,
+    //     hammered the database, and left no trace on the dashboard.
+    //   * in_flight was incremented unconditionally and decremented only here,
+    //     so every aborted request leaked the gauge upward permanently. The
+    //     saturation panel would have drifted up all day and never come back.
+    //
+    // 'close' fires in BOTH cases, so the gauge always balances, and
+    // res.writableEnded distinguishes them.
+    // The store is captured HERE, synchronously, and not with getStore()
+    // inside the listener. AsyncLocalStorage does not automatically follow an
+    // EventEmitter callback into a different async context: 'finish' is emitted
+    // from inside res.end(), still within the request's context, so getStore()
+    // worked there -- but 'close' after a client abort is emitted from the
+    // SOCKET teardown, where the store is gone and getStore() returns
+    // undefined. That silently dropped the query count for exactly the aborted
+    // requests this change exists to capture. `ctx` is a plain object that
+    // db.query() mutates, so holding the reference is enough.
+    const ctx = db.requestContext.getStore();
+
+    res.on('close', () => {
       m.httpRequestsInFlight.dec();
 
       // req.route only exists after Express has matched a handler, and it holds
@@ -44,10 +74,15 @@ app.use((req, res, next) => {
       const tenant = req.tenantSlug || 'none';
       const labels = { route, method: req.method, tenant };
 
-      stopTimer(labels);
-      m.httpRequestsTotal.inc({ ...labels, status: res.statusCode });
+      // 499 is nginx's "client closed request". A real status code would be a
+      // lie -- res.statusCode is still its 200 default when no headers were
+      // ever sent -- and lumping aborts in with successes hides exactly the
+      // failure mode worth alerting on.
+      const completed = res.writableEnded;
 
-      const ctx = db.requestContext.getStore();
+      stopTimer(labels);
+      m.httpRequestsTotal.inc({ ...labels, status: completed ? res.statusCode : 499 });
+
       if (ctx) m.dbQueriesPerRequest.observe({ route }, ctx.queries);
     });
     next();
