@@ -20,7 +20,7 @@ echo -n '$ docker run --rm '"$IMG"' id      -> '
 docker run --rm "$IMG" id
 
 hr "TASK 21b: no build tools or dev dependencies survived"
-for tool in gcc g++ make python3 npm git curl vim; do
+for tool in gcc g++ make python3 npm npx yarn git curl vim apk; do
   if docker run --rm --entrypoint sh "$IMG" -c "command -v $tool" >/dev/null 2>&1; then
     echo "  PRESENT (bad): $tool"
   else
@@ -58,6 +58,12 @@ hr "TASK 22: size comparison"
 docker images --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}' | grep -E "REPOSITORY|abdur/notes-api"
 NB=$(docker image inspect "$NAIVE" --format '{{.Size}}')
 MB=$(docker image inspect "$IMG"   --format '{{.Size}}')
+echo
+echo "  NOTE: 'docker images' and 'image inspect .Size' disagree on this box."
+echo "  docker images reports the uncompressed on-disk size of every platform"
+echo "  in the manifest list; inspect .Size reports the packed size of one"
+echo "  platform. Both are printed below -- the ratio is what matters and the"
+echo "  two agree on it."
 awk -v n="$NB" -v m="$MB" 'BEGIN {
   printf "  naive       : %.0f MB\n", n/1048576
   printf "  multi-stage : %.0f MB\n", m/1048576
@@ -66,18 +72,28 @@ awk -v n="$NB" -v m="$MB" 'BEGIN {
 
 # ------------------------------------------------------------- task 23 ------
 hr "TASK 23a: cold build (--no-cache)"
-time docker build --no-cache -f docker/Dockerfile -t "$IMG" app/ 2>&1 | tail -5
+# --progress=plain prints every step with its CACHED marker. The default
+# "auto" progress collapses finished steps, which is why my first attempt
+# could not show which layers rebuilt.
+time docker build --no-cache --progress=plain -f docker/Dockerfile -t "$IMG" app/ 2>&1 \
+  | grep -E '^#[0-9]+ \[' | sort -u | head -20
 
-hr "TASK 23b: rebuild with NO changes -- everything should be CACHED"
-time docker build -f docker/Dockerfile -t "$IMG" app/ 2>&1 | grep -E "CACHED|=> \[|DONE" | head -20
+hr "TASK 23b: rebuild with NO source change -- every layer should be CACHED"
+time docker build --progress=plain -f docker/Dockerfile -t "$IMG" app/ 2>&1 \
+  | grep -E 'CACHED|^#[0-9]+ \[' | sort -u | head -20
 
-hr "TASK 23c: change one line of source, then rebuild"
+hr "TASK 23c: change ONE line of source, then rebuild"
 echo "// cache-test comment $(date +%s)" >> app/src/server.js
 echo "appended a comment to app/src/server.js"
-time docker build -f docker/Dockerfile -t "$IMG" app/ 2>&1 | grep -E "CACHED|=> \[" | head -20
-# put the source back
+echo
+time docker build --progress=plain -f docker/Dockerfile -t "$IMG" app/ 2>&1 \
+  | grep -E 'CACHED|^#[0-9]+ \[' | sort -u | head -20
 sed -i '/^\/\/ cache-test comment/d' app/src/server.js
 echo "(comment removed again)"
+echo
+echo "READ IT LIKE THIS: the npm ci layer stays CACHED because package.json did"
+echo "not change, and the cache miss starts at COPY src -- every layer from"
+echo "there down is rebuilt, because Docker's cache is a chain."
 
 # ------------------------------------------------------------- task 24 ------
 hr "TASK 24: which layer is biggest"

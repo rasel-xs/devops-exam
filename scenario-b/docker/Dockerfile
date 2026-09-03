@@ -30,6 +30,21 @@ ENV NODE_ENV=production \
 # curl, no bash, no compiler, no npm cache, no package manager metadata.
 WORKDIR /app
 
+# The official node image ships npm and yarn, and my own test caught them still
+# present in the "no build tools" image:
+#
+#   absent  (good): gcc
+#   PRESENT (bad):  npm
+#
+# A package manager in a runtime image is a real risk, not a tidiness issue: an
+# attacker with code execution in the container gets a ready-made way to
+# download and run more code. Nothing here needs npm -- node_modules arrives
+# prebuilt from the deps stage -- so it goes, along with yarn and npx.
+# This runs before USER node because removing them needs root.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/bin/npm /usr/local/bin/npx \
+           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
 # node:alpine already ships an unprivileged `node` user (uid 1000). Using it is
 # safer than creating my own, because the image's own files are already owned
 # correctly for it.
