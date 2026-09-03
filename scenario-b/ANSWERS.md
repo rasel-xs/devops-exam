@@ -1,9 +1,15 @@
 # Scenario B — Answers
 
-**Exam token:** `REPLACE_WITH_EXAM_TOKEN`
+**Exam token:** `root-vmi3536696-1788282556-1536d427`
+**Server:** `169.58.246.108` — Ubuntu 24.04.4, Docker 29.7.2, Compose v5.5.0
 
-> `<<FILL: ...>>` marks a number that only exists after the command has run on
-> real hardware. Fill each from your own output.
+> **Shared machine.** This VPS also hosts other students, and one of them
+> already runs containers named `notes-api` / `notes-db` with a
+> `docker_notes-db-data` volume. Everything here is namespaced: compose project
+> `abdur-notes`, image `abdur/notes-api`, host ports 3120 (app), 3130 (Grafana),
+> 9190 (Prometheus), 5433 (Postgres), 3140 (Swarm), stack `abdur_notes`.
+>
+> `<<FILL: ...>>` marks a number not yet measured.
 
 **Library note:** the brief names `prom-client` for Node and that is what I
 used. `npm install` prints a deprecation notice saying it has been renamed to
@@ -21,16 +27,45 @@ specifies rather than taking a versioning discontinuity into an exam.
 runs `npm ci --omit=dev`, `runtime` on `node:20-alpine` copies only
 `node_modules`, `src`, `db` and `package.json`.
 
-- **No build tools** — the compiler, `npm` cache and every devDependency stay
-  in the `deps` stage, which is never part of the final image. Nothing is
+- **No build tools** — the compiler, npm cache and every devDependency stay in
+  the `deps` stage, which is never part of the final image. Nothing is
   "deleted"; it is never copied.
+
+  **My own test caught this claim being false the first time.** Probing the
+  image for eight tools rather than assuming produced:
+
+  ```
+    absent  (good): gcc, g++, make, python3, git, curl, vim
+    PRESENT (bad):  npm
+  ```
+
+  npm was not installed by me — `node:20-alpine` ships it. A package manager in
+  a runtime image is a real risk rather than untidiness: an attacker with code
+  execution gets a ready-made way to fetch and run more code. Nothing here
+  needs it, since `node_modules` arrives prebuilt from the `deps` stage, so the
+  runtime stage now removes npm, npx and yarn before `USER node`. After that:
+
+  ```
+    absent : npm
+    absent : npx
+    absent : yarn
+    PRESENT: apk       <- Alpine's own package manager, deliberately kept
+    PRESENT: node      <- obviously required
+  ```
+
+  `apk` is still there and I am not going to pretend otherwise. Removing it
+  fights the base image; the right answer at that point is a distroless base
+  (`gcr.io/distroless/nodejs20`) that never had a package manager or a shell.
+  I did not switch because it also removes `wget`, which my `HEALTHCHECK` uses,
+  and that would need a compiled probe or a `HEALTHCHECK NONE` plus an
+  orchestrator-level probe instead. Documented trade, not an oversight.
 - **Non-root** — `USER node`, the uid 1000 account that `node:alpine` already
   ships. This is PID 1 in the container, so a container escape starts from an
   unprivileged uid.
 
   ```
-  $ docker run --rm notes-api:multi whoami   ->  node
-  $ docker run --rm notes-api:multi id       ->  uid=1000(node) gid=1000(node)
+  $ docker run --rm abdur/notes-api:multi whoami  ->  node
+  $ docker run --rm abdur/notes-api:multi id      ->  uid=1000(node) gid=1000(node) groups=1000(node)
   ```
 
 - **HEALTHCHECK** — `wget --spider http://127.0.0.1:3000/healthz` every 10s
@@ -40,9 +75,20 @@ runs `npm ci --omit=dev`, `runtime` on `node:20-alpine` copies only
   turn a database incident into a total outage.
 
   ```
-  $ docker ps                     -> STATUS  Up 30 seconds (healthy)
-  $ docker inspect --format='{{json .State.Health}}' hc | jq
+  $ docker ps
+  NAMES      STATUS
+  abdur-hc   Up 6 seconds (healthy)
+
+  $ docker inspect --format='{{json .State.Health}}' abdur-hc | jq
+  { "Status": "healthy", "FailingStreak": 0,
+    "Log": [ { "ExitCode": 0, ... } ] }
   ```
+
+  **Healthy in 6 seconds, with no database attached at all.** That is the point
+  of pointing the healthcheck at `/healthz` and not `/readyz`: liveness must
+  not depend on the database, or a database blip makes the orchestrator kill
+  every healthy app container too and turns a database incident into a total
+  outage.
 
 One detail worth stating: `CMD ["node", "src/server.js"]` is the exec form. The
 shell form would run `/bin/sh -c node ...`, putting sh at PID 1, and sh does not
@@ -52,11 +98,22 @@ requests in task 37.
 
 ### Task 22 — Size
 
-| Image | Size |
-| --- | --- |
-| `notes-api:naive` (`Dockerfile.naive`) | `<<FILL: e.g. 1.42GB>>` |
-| `notes-api:multi` (`Dockerfile`) | `<<FILL: e.g. 190MB>>` |
-| Reduction | `<<FILL: e.g. 87%>>` |
+| Image | `docker images` | `image inspect .Size` |
+| --- | --- | --- |
+| `abdur/notes-api:naive` | **1.66 GB** | 399 MB |
+| `abdur/notes-api:multi` | **207 MB** | 48 MB |
+| Reduction | **87.5 %** | **87.9 %** |
+
+Comfortably past the 60 % the brief requires, by either measure.
+
+**The two columns disagree and I checked why rather than picking the flattering
+one.** `docker images` reports the uncompressed on-disk size of everything in
+the manifest list; `docker image inspect .Size` reports the packed size of a
+single platform. The absolute numbers differ by roughly 4x, the *ratio* agrees
+to within half a percent, and the ratio is what the question asks about. Worth
+knowing because "how big is my image" has at least three defensible answers —
+on-disk, compressed-in-registry, and per-platform — and people quote whichever
+suits them.
 
 **What was removed, and what that cost:**
 
@@ -66,6 +123,7 @@ requests in task 37.
 | `build-essential`, `python3`, `git` | ~400 MB | Cannot rebuild native modules inside the container. Correct — a runtime image should not be able to compile. |
 | devDependencies (`--omit=dev`) | `<<FILL>>` | Cannot run the test suite inside the production image. Tests run in CI against the source, so nothing lost. |
 | `npm cache clean --force` | ~50 MB | Nothing. It is a download cache for a machine that will never install again. |
+| npm, npx, yarn (removed explicitly) | see note | Cannot install anything at runtime — which is the entire point. Note this removal does **not** shrink the image: see task 25. |
 | `vim`, `curl` | ~30 MB | Debugging inside the container is harder — no shell tooling to poke around with. Mitigation is `docker debug` / an ephemeral sidecar sharing the namespace, not shipping an editor to production. |
 
 The honest trade: the small image is harder to debug in place. That is the right
@@ -78,13 +136,33 @@ Adding a comment to `src/server.js` and rebuilding:
 
 | Build | Time |
 | --- | --- |
-| Cold (`--no-cache`) | `<<FILL: e.g. 41s>>` |
-| Warm, after a one-line source change | `<<FILL: e.g. 2.1s>>` |
+| Cold (`--no-cache`) | **16.8 s** |
+| Warm, no change at all | **2.2 s** |
+| Warm, after a one-line source change | **3.6 s** |
 
-**Which layers rebuilt, and why.** Everything up to and including `npm ci` shows
-`CACHED`. The first layer to rebuild is `COPY --chown=node:node src ./src`, and
-every layer after it rebuilds too — Docker's cache is a chain, so one miss
-invalidates the remainder.
+**The first attempt at this measurement was wrong and I had to fix the method.**
+It reported the source-change rebuild as *faster* than the no-change rebuild,
+which is impossible. The cause was the default `--progress=auto`, which
+collapses completed steps, so my filter was reading an incomplete step list and
+the timings were dominated by noise. `--progress=plain` prints every step with
+its `CACHED` marker and the numbers become sane.
+
+**Which layers rebuilt, and why.** With no change, every step is `CACHED`
+including `[deps 4/4] RUN npm ci`. After appending one comment to
+`app/src/server.js`:
+
+```
+#13 CACHED   [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#14 CACHED   [runtime 4/7] COPY --from=deps ... /build/node_modules
+#16 CACHED   [runtime 5/7] COPY --chown=node:node package.json ./
+#17          [runtime 6/7] COPY --chown=node:node src ./src        <- cache miss starts here
+#18          [runtime 7/7] COPY --chown=node:node db ./db          <- and everything after
+```
+
+`npm ci` stays cached because `package.json` and the lockfile did not change.
+The miss begins at `COPY src` and everything below it rebuilds, because
+Docker's cache is a **chain** — one miss invalidates the remainder regardless
+of whether those later layers would have produced identical output.
 
 This is entirely because of copy order:
 
@@ -105,8 +183,19 @@ least to most frequently changed.
 docker history --no-trunc --format "{{.Size}}\t{{.CreatedBy}}" notes-api:multi
 ```
 
-Biggest layer: `<<FILL: size>>`, created by
-`<<FILL: usually COPY /build/node_modules, or the base image layer>>`.
+```
+130MB   RUN addgroup -g 1000 node && adduser ... && apk add libstdc++ ...   <- the Node runtime, from the base image
+ 11.3MB COPY --from=deps --chown=node:node /build/node_modules ./node_modules
+  9.11MB ADD alpine-minirootfs-3.23.4-x86_64.tar.gz /
+  5.48MB RUN apk add --no-cache --virtual .build-deps-yarn curl gnupg tar ...
+ 32.8kB COPY --chown=node:node src ./src
+ 28.7kB RUN rm -rf /usr/local/lib/node_modules/npm ...
+```
+
+**Biggest layer: 130 MB — the Node.js runtime itself**, installed by the
+`node:20-alpine` base image, not by anything I wrote. My own application code
+is 32.8 kB and its dependencies 11.3 MB; the language runtime is over ten times
+the size of everything I contributed.
 
 **Could it be smaller?** Yes, in order of effort:
 
@@ -117,9 +206,16 @@ Biggest layer: `<<FILL: size>>`, created by
    harder stack traces.
 3. Use a distroless or `node:20-alpine`-slim base, or `node --experimental-sea`
    for a single executable.
-4. If the base image layer is the biggest one, that is fine and expected —
-   it is shared across every image built from it, so it costs one download per
-   host, not one per image.
+4. **Since the biggest layer here is the base image, the honest answer is
+   mostly "leave it alone".** That layer is shared by every image built from
+   `node:20-alpine` on the host: it is pulled once and reused, so shrinking it
+   would save far less real disk and bandwidth than its size suggests. The
+   layers actually worth attacking are the ones unique to me, and they already
+   total under 12 MB.
+
+Note the `rm -rf npm` layer is **28.7 kB, not −130 MB**. Deleting files in a
+later layer cannot shrink the image — see task 25, which is the same mechanism
+seen from the other side.
 
 The thing NOT to do is squash layers to make the number smaller. That destroys
 cache sharing between images and makes pulls slower overall.
