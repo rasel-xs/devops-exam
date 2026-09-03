@@ -1,0 +1,66 @@
+# B3 task 33 -- a GRAFANA-managed alert rule, provisioned from a file rather
+# than clicked together in the UI, so it is reproducible and lives in git.
+#
+# The same condition also exists as a Prometheus rule in docker/alert.rules.yml.
+# That is deliberate, not duplication for its own sake: a Prometheus alerting
+# rule keeps firing when Grafana is down, which is exactly when you want to
+# hear about an outage. The Grafana copy is what a human watches.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: notes-api
+    folder: exam
+    # 30s, not 5s. Evaluating an alert as often as we scrape buys nothing --
+    # `for: 2m` is what decides how fast it fires -- and it multiplies query
+    # load on Prometheus for no benefit.
+    interval: 30s
+    rules:
+      - uid: abdur-p95-latency
+        title: HighP95Latency
+        condition: C
+        # A = the query, C = the threshold expression. Grafana alerts are a
+        # small pipeline: a data query, then expressions over its result.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: PROM_EXAM
+            model:
+              refId: A
+              # `instant: true` so the rule evaluates ONE value per series.
+              # A range query would hand the threshold expression a whole
+              # series and Grafana would have to reduce it anyway.
+              instant: true
+              expr: >-
+                histogram_quantile(0.95,
+                  sum by (le, route) (rate(http_request_duration_seconds_bucket[1m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1.5]
+        # 1.5s justified against the measured baseline -- see
+        # docker/alert.rules.yml and ANSWERS.md task 33.
+        for: 2m
+        # NoData is not an alert here: a route nobody called has no p95, and
+        # paging for "nobody used /api/search this minute" is how alerting
+        # gets ignored. AppDown (Prometheus side) covers the case that
+        # actually matters -- the target being gone.
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          env: exam
+        annotations:
+          summary: "p95 latency on {{ $labels.route }} is above 1.5s"
+          description: >-
+            Baseline p95 for this route is well under 1.5s when healthy.
+            Check dashboard panel B (where the time is going) and panel E
+            (queries per request) before panel A.

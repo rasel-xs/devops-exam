@@ -6,11 +6,26 @@ groups:
   - name: notes-api
     rules:
       - alert: HighP95Latency
-        # Thresholds must come from your own Panel A baseline -- see ANSWERS.md.
+        # THRESHOLD JUSTIFICATION, from measured Panel A / Panel H baselines:
+        #
+        #   idle / light traffic   /api/notes      p95 0.83 s
+        #                          /api/notes/:id  p95 0.008 s
+        #                          /api/search     p95 0.25 s
+        #                          /healthz        p95 0.009 s
+        #   under the load run     /api/notes      p95 22-43 s
+        #                          other routes    p95 0.4-0.9 s
+        #
+        # 1.5 s is roughly 1.8x the worst NORMAL p95 (/api/notes at 0.83 s) and
+        # far below anything seen while degraded. Lower and /api/notes pages on
+        # an ordinary busy minute; much higher and a route that normally
+        # answers in 8 ms could get 100x slower without anyone hearing.
         expr: |
           histogram_quantile(0.95,
             sum by (le, route) (rate(http_request_duration_seconds_bucket[1m]))
           ) > 1.5
+        # for: 2m = 24 consecutive evaluations at the 5s evaluation_interval.
+        # A single slow scrape or one unlucky burst must not page anybody; two
+        # minutes of sustained breach is a real condition.
         for: 2m
         labels:
           severity: warning
@@ -18,15 +33,39 @@ groups:
           summary: "p95 latency on {{ $labels.route }} is {{ $value | printf \"%.2f\" }}s"
 
       - alert: HighErrorRate
+        # 499 is included deliberately. The app records 499 when the CLIENT
+        # gave up before the response was written (B3 task 31). Those are real
+        # failures for the user -- and they are the slowest requests in the
+        # system, so an error-rate alert that ignores them is blind to the
+        # worst outage it could have. During the load run acme's 499 rate was
+        # 22%; with 5xx only, this alert would have stayed silent throughout.
+        #
+        # The `and rate(...) > 0.2` guard was added after watching this rule
+        # fire at 22:22:00 -- THREE MINUTES AFTER the load stopped at 22:19:00.
+        # A ratio over a rate window keeps firing once traffic dries up,
+        # because the denominator collapses. It is worse here than usual: the
+        # 499s are the SLOW requests, finishing ~30s after they were made,
+        # while the 200s finish immediately, so as the 5m window slides the
+        # successes age out of it first and the failure ratio actually RISES
+        # in a quiet period. An alert that goes off after the incident is over
+        # is how people learn to ignore alerts.
+        #
+        # 0.2 req/s is one request per 5 seconds. Below that the ratio is
+        # meaningless anyway -- one failure out of three requests is "33%
+        # errors" and tells you nothing.
         expr: |
-          sum by (route) (rate(http_requests_total{status=~"5.."}[5m]))
-          /
-          sum by (route) (rate(http_requests_total[5m])) > 0.05
+          (
+            sum by (route) (rate(http_requests_total{status=~"5..|499"}[5m]))
+            /
+            sum by (route) (rate(http_requests_total[5m]))
+          ) > 0.05
+          and
+          sum by (route) (rate(http_requests_total[5m])) > 0.2
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "{{ $labels.route }} is returning over 5% 5xx"
+          summary: "{{ $labels.route }} is failing {{ $value | printf \"%.1f\" }} of requests (5xx or client-abort)"
 
       - alert: AppDown
         expr: up{job="notes-api"} == 0

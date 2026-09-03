@@ -1192,38 +1192,107 @@ correct, not broken — but it means the table is only meaningful while traffic
 is flowing, which is why the final screenshots were taken with the load
 generator running.
 
-### Task 33 — The alert that fires
+### Task 33 — The alert
 
-Rule: p95 latency on any route above **`<<FILL: e.g. 1.5s>>`** for
-**`<<FILL: e.g. 2m>>`**. Screenshot in `Firing`: `evidence/b3-alert-firing.png`.
-The equivalent Prometheus rules are in
-[`docker/alert.rules.yml`](docker/alert.rules.yml).
+Two copies of the same condition, deliberately:
+[`docker/alert.rules.yml`](docker/alert.rules.yml) (Prometheus) and
+[`grafana/provisioning/alerting/alerts.yml`](grafana/provisioning/alerting/alerts.yml)
+(Grafana-managed, provisioned from a file rather than clicked together, so it
+is reproducible and in git). The Prometheus copy keeps firing when Grafana is
+down, which is exactly when you want to hear from it; the Grafana copy is what
+a person watches. Evidence: `evidence/b3-task33.txt`.
 
-**Why that threshold.** Normal p95 from panel A is `<<FILL>>`s on the heaviest
-route and `<<FILL>>`s on the rest. I set the threshold at roughly
-`<<FILL: 3-5x>>` the normal p95, which is high enough that ordinary variation
-never reaches it and low enough that a user would already be unhappy. A
-threshold set just above normal produces an alert that fires every day and gets
-muted — an alert nobody trusts is worse than no alert, because it also trains
-people to ignore the ones that matter.
+**The threshold, from measured baselines rather than a round number:**
 
-**Why that `for` duration.** `for: 2m` means the condition must hold
-continuously for two minutes before the alert fires. It exists to filter
-transients: a single slow scrape, a garbage collection pause, a deploy, a
-30-second burst that the system absorbs correctly. None of those need a human.
+| | `/api/notes` | `/api/search` | `/api/notes/:id` | `/healthz` |
+| --- | --- | --- | --- | --- |
+| light traffic p95 | 0.83 s | 0.25 s | 0.008 s | 0.009 s |
+| under load p95 | 22–43 s | 0.4–0.9 s | 0.4–0.9 s | — |
 
-**What happens with `for: 0s`:** the alert fires on the first evaluation that
-crosses the line and resolves on the next one that does not. Around a threshold,
-normal jitter crosses it repeatedly, so you get *flapping* — a stream of
-firing/resolved pairs, a pager going off at 3am for something that fixed itself
-in 15 seconds, and eventually a muted alert.
+`> 1.5s` is about **1.8× the worst healthy p95** and far below anything seen
+while degraded. Lower — say 1 s — and `/api/notes` pages on an ordinary busy
+minute. Much higher — say 20 s — and a route that normally answers in 8 ms
+could get a hundred times slower unnoticed.
 
-The cost is detection latency: `for: 2m` means you learn about a real outage two
-minutes late. So the duration should be tuned against how long you are willing
-to be down, not set to a habitual value — a payments endpoint might justify
-`30s` and the noise that comes with it; a background report endpoint might
-justify `10m`. `for` is the knob that trades false positives against detection
-speed, and picking it is a product decision, not a technical one.
+`for: 2m` is 24 consecutive evaluations at the 5 s `evaluation_interval`. One
+slow scrape or one unlucky burst must not wake anybody.
+
+**The state machine, caught live.** Showing an alert "firing" proves nothing
+about understanding `for:`; catching **pending** does.
+
+```
+22:14:25  HighP95Latency /api/notes   pending    4.88
+22:16:26  HighP95Latency /api/notes   firing     9.83     <- 2m01s after pending
+22:19:00  load stopped
+22:19:29  HighP95Latency /api/notes   firing     (last)
+22:19:44  (gone -- resolved on its own)
+```
+
+Grafana's own API agreed at the same moment: `"state":"firing"` /
+`"Alerting"`, every other rule `Normal`.
+
+**A cascade the timeline shows and no single panel does:**
+
+```
+22:16:26  /api/notes       firing
+22:17:12  /api/notes/:id   pending
+22:17:42  /api/stats       pending
+22:18:58  /api/search      pending
+```
+
+One endpoint's N+1 exhausts the connection pool and routes with no problem of
+their own cross the threshold behind it. That is panel I's queueing lag,
+confirmed from a completely different direction.
+
+**The bug this task found in its own alert.** `HighErrorRate` fired at
+**22:22:00 — three minutes after the load stopped.**
+
+A ratio over a rate window keeps rising once traffic dries up, because the
+denominator collapses. It is worse than usual here: 499s are by definition the
+*slow* requests, completing ~30 s after they were issued, while 200s complete
+immediately. As the 5-minute window slides forward, the successes age out of it
+first and the failure ratio **increases during the quiet period**. An alert
+that goes off after the incident is over is precisely how people are trained to
+ignore alerts. Fixed with a minimum-traffic guard:
+
+```promql
+( sum by (route) (rate(http_requests_total{status=~"5..|499"}[5m]))
+  / sum by (route) (rate(http_requests_total[5m])) ) > 0.05
+and
+  sum by (route) (rate(http_requests_total[5m])) > 0.2
+```
+
+0.2 req/s is one request every five seconds; below that a ratio is meaningless
+anyway — one failure in three requests is "33% errors" and means nothing.
+
+The rule also matches `status=~"5..|499"` rather than `5..` alone. After task 31
+made client aborts visible, an error-rate alert that ignored them would have
+been blind to the worst failure the service produces. During the load run
+`/api/notes` sat at 6–8% by this definition and 0% by the 5xx-only one.
+
+**Two honest notes about this evidence.**
+
+1. `activeAt` for `HighErrorRate` was 22:14:09 and `for` is 5m, so it should
+   have fired at 22:19:09; it fired at 22:22:00. The condition must therefore
+   have dropped below 0.05 at least once in between and restarted the timer —
+   probably around 22:17:00. I could not see it happen: Prometheus evaluates
+   every 5 s and my sampling loop ran every 15 s. I am recording the
+   inference, not claiming the observation.
+2. The `VALUE` column in the transcript is **wrong for `HighErrorRate`**, and
+   the transcript is kept as it was rather than re-run. My sampling script
+   printed `a["value"][:12]`, which truncated `8.225108225108226e-02` to
+   `8.2251082251` — chopping the exponent and rendering 8.2% as 822%. Same
+   class of error as the Grafana unit that displayed 363 req/s as "6.06 mins":
+   the value was right and the rendering lied. The script now formats with
+   `"{:.4g}"`. Every `HighErrorRate` number in that transcript should be read
+   as ×10⁻².
+
+**A design note on the Grafana copy.** `noDataState: OK`, not `Alerting`. A
+route nobody called has no p95, and paging because "nobody used /api/search
+this minute" is the same failure mode as the one above. The case that actually
+matters — the target being gone — is covered by `AppDown` on
+`up{job="notes-api"} == 0`, which is a positive statement about the scrape
+rather than an absence of data.
 
 ### Task 34 — Fix one problem and prove it
 
