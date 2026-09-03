@@ -1,0 +1,95 @@
+
+############ FU2-1  why the compose OOM survived and the docker-run OOM did not ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:17:46 CEST 2026
+  host swap:
+                   total        used        free      shared  buff/cache   available
+    Mem:           7.8Gi       999Mi       6.1Gi        31Mi       984Mi       6.8Gi
+    Swap:             0B          0B          0B
+
+--- plain docker run, Buffer.alloc only ---
+  run-alloc              status=running   exit=0    OOMKilled=false  mem=12.3MiB / 50MiB
+                         Memory=52428800 MemorySwap=104857600
+
+--- plain docker run, Buffer.alloc().fill(1)  -- forces the pages resident ---
+  run-fill               status=exited    exit=137  OOMKilled=true   mem=0B / 0B
+                         Memory=52428800 MemorySwap=104857600
+
+--- compose: what swap setting does deploy.resources actually produce? ---
+  Status=running OOMKilled=false Memory=52428800 MemorySwap=104857600 Swappiness=<nil>
+mem=15.93MiB / 50MiB (31.87%)
+
+############ FU2-2  the nftables rule that drops cross-bridge traffic ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:18:52 CEST 2026
+  iptables backend: iptables v1.8.10 (nf_tables)
+
+--- does the legacy view have anything? ---
+  matching lines: 0
+
+--- nftables view ---
+		fib daddr type local counter packets 643005 bytes 33414769 jump DOCKER
+	}
+
+	chain OUTPUT {
+		type nat hook output priority dstnat; policy accept;
+		ip daddr != 127.0.0.0/8 fib daddr type local counter packets 16 bytes 960 jump DOCKER
+	}
+
+	chain POSTROUTING {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 172.20.0.0/16 oifname != "br-583a2e72ef03" counter packets 0 bytes 0 masquerade
+		ip saddr 172.19.0.0/16 oifname != "br-57565fafbaa6" counter packets 0 bytes 0 masquerade
+--
+		ip saddr 172.17.0.0/16 oifname != "docker0" counter packets 241 bytes 15435 masquerade
+	}
+
+	chain DOCKER {
+		iifname != "br-57565fafbaa6" tcp dport 5151 counter packets 0 bytes 0 dnat to 172.19.0.2:8080
+	}
+}
+table ip filter {
+	chain DOCKER-FORWARD {
+		counter packets 340802 bytes 615029197 jump DOCKER-CT
+		counter packets 146510 bytes 45283467 jump DOCKER-INTERNAL
+		counter packets 146510 bytes 45283467 jump DOCKER-BRIDGE
+		iifname "docker0" counter packets 25898 bytes 1987827 accept
+		iifname "br-9b7a1e270452" counter packets 82088 bytes 31245936 accept
+		iifname "br-57565fafbaa6" counter packets 0 bytes 0 accept
+		iifname "br-583a2e72ef03" counter packets 0 bytes 0 accept
+	}
+
+	chain FORWARD {
+--
+		counter packets 340802 bytes 615029197 jump DOCKER-USER
+		counter packets 340802 bytes 615029197 jump DOCKER-FORWARD
+	}
+
+	chain DOCKER-USER {
+	}
+
+
+--- the bridges themselves ---
+  docker0          DOWN           aa:23:e1:42:9c:3b <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+  br-9b7a1e270452  DOWN           66:9c:21:23:23:d8 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+  br-57565fafbaa6  UP             1a:56:58:e3:d0:54 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+  br-583a2e72ef03  UP             1a:7f:80:ce:30:6c <BROADCAST,MULTICAST,UP,LOWER_UP> 
+
+############ FU2-3  does OUR compose command forward SIGTERM? ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:18:52 CEST 2026
+
+--- what is PID 1 inside the app container? ---
+PID   COMMAND
+    1 node src/server.js
+   30 ps -o pid,args
+
+--- stop it and time how long it takes ---
+ Container abdur-notes-app-1 Stopping 
+ Container abdur-notes-app-1 Stopped 
+  exit=0  stop took 1s
+
+--- did the app log its shutdown, or was it killed silently? ---
+migrations applied
+{"level":"info","msg":"listening","host":"8f0c63b116a9","port":3000,"version":"v1","pid":1}
+{"level":"info","msg":"shutting down","signal":"SIGTERM"}
+  (a 'shutting down' line = the handler ran; ~10s and no line = sh ate the signal)
+
+############ follow-up 2 complete ############

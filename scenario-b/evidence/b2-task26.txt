@@ -1,0 +1,100 @@
+
+
+========== TASK 26a -- depends_on only, FRESH volume ==========
+--- up -d (nothing waits for anything) ---
+ Network abdur-notes-broken_default Creating 
+ Network abdur-notes-broken_default Creating 
+ Volume abdur-notes-broken_pgdata_broken Creating 
+ Volume abdur-notes-broken_pgdata_broken Creating 
+ Volume abdur-notes-broken_pgdata_broken Created 
+ Volume abdur-notes-broken_pgdata_broken Created 
+ Network abdur-notes-broken_default Created 
+ Network abdur-notes-broken_default Created 
+ Container abdur-notes-broken-postgres-1 Creating 
+ Container abdur-notes-broken-postgres-1 Created 
+ Container abdur-notes-broken-app-1 Creating 
+ Container abdur-notes-broken-app-1 Created 
+ Container abdur-notes-broken-postgres-1 Starting 
+ Container abdur-notes-broken-postgres-1 Started 
+ Container abdur-notes-broken-app-1 Starting 
+ Container abdur-notes-broken-app-1 Started 
+
+--- polling from t=0 ---
+  t=   0.0s  /healthz=000  /readyz=000
+  t=   0.6s  /healthz=200  /readyz=503
+  t=   1.2s  /healthz=200  /readyz=503
+  t=   1.8s  /healthz=200  /readyz=503
+  t=   2.4s  /healthz=200  /readyz=503
+  t=   3.0s  /healthz=200  /readyz=503
+  t=   3.6s  /healthz=200  /readyz=200
+
+  BROKEN: first HEALTHY at t=   0.6s, first READY at t=   3.6s
+  >>> lying-healthy window = 3.0 seconds
+  last /readyz body: {"status":"ready","version":"v1"}
+
+
+========== TASK 26b -- who was ready when? (container clocks, not mine) ==========
+--- app: first log line ---
+app-1  | 2026-09-03T17:49:13.094019573Z {"level":"info","msg":"listening","host":"8038d97b7dee","port":3000,"version":"v1","pid":1}
+
+--- app: connection errors while postgres was still initialising ---
+  (none above = the app never even tried; that is the point)
+
+--- postgres: initdb -> ready ---
+postgres-1  | 2026-09-03T17:49:14.828769116Z initdb: warning: enabling "trust" authentication for local connections
+postgres-1  | 2026-09-03T17:49:14.828778851Z initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1  | 2026-09-03T17:49:15.129805115Z 2026-09-03 17:49:15.129 UTC [41] LOG:  database system is ready to accept connections
+postgres-1  | 2026-09-03T17:49:15.353298464Z /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+postgres-1  | 2026-09-03T17:49:15.367112840Z 2026-09-03 17:49:15.365 UTC [42] LOG:  shutting down
+postgres-1  | 2026-09-03T17:49:15.829132516Z 2026-09-03 17:49:15.825 UTC [1] LOG:  database system is ready to accept connections
+
+--- what docker thought of the app the whole time ---
+NAME                            IMAGE                    COMMAND                  SERVICE    CREATED         STATUS                   PORTS
+abdur-notes-broken-app-1        abdur-notes-broken-app   "docker-entrypoint.s…"   app        7 seconds ago   Up 5 seconds (healthy)   0.0.0.0:3120->3000/tcp, [::]:3120->3000/tcp
+abdur-notes-broken-postgres-1   postgres:16-alpine       "docker-entrypoint.s…"   postgres   7 seconds ago   Up 6 seconds             5432/tcp
+
+
+========== TASK 26c -- condition: service_healthy, FRESH volume ==========
+--- up -d postgres app  (app is HELD until pg_isready passes) ---
+ Network abdur-notes_default Creating 
+ Network abdur-notes_default Creating 
+ Volume abdur-notes_pgdata Creating 
+ Volume abdur-notes_pgdata Creating 
+ Volume abdur-notes_pgdata Created 
+ Volume abdur-notes_pgdata Created 
+ Network abdur-notes_default Created 
+ Network abdur-notes_default Created 
+ Container abdur-notes-postgres-1 Creating 
+ Container abdur-notes-postgres-1 Created 
+ Container abdur-notes-app-1 Creating 
+ Container abdur-notes-app-1 Created 
+ Container abdur-notes-postgres-1 Starting 
+ Container abdur-notes-postgres-1 Started 
+ Container abdur-notes-postgres-1 Waiting 
+ Container abdur-notes-postgres-1 Healthy 
+ Container abdur-notes-app-1 Starting 
+ Container abdur-notes-app-1 Started 
+
+--- polling from t=0 ---
+  t=   0.0s  /healthz=000  /readyz=000
+  t=   0.7s  /healthz=000  /readyz=000
+  t=   1.2s  /healthz=200  /readyz=200
+
+  FIXED: first HEALTHY at t=   1.2s, first READY at t=   1.2s
+  >>> lying-healthy window = 0.0 seconds
+  last /readyz body: {"status":"ready","version":"v1"}
+
+--- postgres healthcheck transitions ---
+2026-09-03 19:49:26.843779901 +0200 CEST exit=0 127.0.0.1:5432 - accepting connections
+
+2026-09-03 19:49:30.101489949 +0200 CEST exit=0 127.0.0.1:5432 - accepting connections
+
+
+
+NAME                     IMAGE                   COMMAND                  SERVICE    CREATED          STATUS                            PORTS
+abdur-notes-app-1        abdur/notes-api:multi   "docker-entrypoint.s…"   app        10 seconds ago   Up 3 seconds (health: starting)   0.0.0.0:3120->3000/tcp, [::]:3120->3000/tcp
+abdur-notes-postgres-1   postgres:16-alpine      "docker-entrypoint.s…"   postgres   10 seconds ago   Up 9 seconds (healthy)            127.0.0.1:5433->5432/tcp
+
+
+========== DONE ==========
+Compare the two 'lying-healthy window' numbers above.

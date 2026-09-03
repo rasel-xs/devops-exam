@@ -1,0 +1,189 @@
+
+
+========== SETUP -- fixed stack up, schema applied, DATA SEEDED ==========
+ Container abdur-notes-postgres-1 Running 
+ Container abdur-notes-app-1 Running 
+ Container abdur-notes-postgres-1 Waiting 
+ Container abdur-notes-postgres-1 Healthy 
+  ready after 1 tries
+  tenants: 0   notes: 0
+--- tenants table is empty, running the seeder (50k notes, 150k tags) ---
+seeding...
+  acme      30000 notes
+  globex    8000 notes
+  initech   6000 notes
+  umbrella  4000 notes
+  hooli     2000 notes
+  150000 tags
+┌─────────┬────────────┬─────────┬─────────┐
+│ (index) │ slug       │ notes   │ tags    │
+├─────────┼────────────┼─────────┼─────────┤
+│ 0       │ 'acme'     │ '30000' │ '89883' │
+│ 1       │ 'globex'   │ '8000'  │ '23960' │
+│ 2       │ 'initech'  │ '6000'  │ '18303' │
+│ 3       │ 'umbrella' │ '4000'  │ '11923' │
+│ 4       │ 'hooli'    │ '2000'  │ '5931'  │
+└─────────┴────────────┴─────────┴─────────┘
+done in 9.2s
+  tenants: 5   notes: 50000
+
+
+========== STEP 1 -- write data through the API ==========
+{"id":50001,"tenant_id":1,"title":"TASK27-195849-1","body":"written before down -v","created_at":"2026-09-03T17:59:04.05
+{"id":50002,"tenant_id":1,"title":"TASK27-195849-2","body":"written before down -v","created_at":"2026-09-03T17:59:04.13
+{"id":50003,"tenant_id":1,"title":"TASK27-195849-3","body":"written before down -v","created_at":"2026-09-03T17:59:04.23
+  notes now: 50003
+
+
+========== STEP 2 -- docker compose down   (no -v) ==========
+ Container abdur-notes-app-1 Stopping 
+ Container abdur-notes-app-1 Stopped 
+ Container abdur-notes-app-1 Removing 
+ Container abdur-notes-app-1 Removed 
+ Container abdur-notes-postgres-1 Stopping 
+ Container abdur-notes-postgres-1 Stopped 
+ Container abdur-notes-postgres-1 Removing 
+ Container abdur-notes-postgres-1 Removed 
+ Network abdur-notes_default Removing 
+ Network abdur-notes_default Removed 
+  volumes matching abdur-notes:
+abdur-notes_pgdata
+--- up again ---
+  ready after 2 tries
+  notes after plain 'down' + 'up': 50003   (was 50003)
+
+
+========== STEP 3 -- take a backup FIRST ==========
+wrote docker/../backups/notes-20260903-195919.sql.gz (5.4M)
+total 5532
+drwxr-xr-x 2 root root     4096 Sep  3 19:59 .
+drwxr-xr-x 7  501 staff    4096 Sep  3 19:54 ..
+-rw-r--r-- 1 root root     1293 Sep  3 19:54 notes-20260903-195456.sql.gz
+-rw-r--r-- 1 root root  5648588 Sep  3 19:59 notes-20260903-195919.sql.gz
+  latest backup: backups/notes-20260903-195919.sql.gz
+
+
+========== STEP 4 -- docker compose down -v   (the destructive one) ==========
+ Container abdur-notes-app-1 Stopping 
+ Container abdur-notes-app-1 Stopped 
+ Container abdur-notes-app-1 Removing 
+ Container abdur-notes-app-1 Removed 
+ Container abdur-notes-postgres-1 Stopping 
+ Container abdur-notes-postgres-1 Stopped 
+ Container abdur-notes-postgres-1 Removing 
+ Container abdur-notes-postgres-1 Removed 
+ Network abdur-notes_default Removing 
+ Volume abdur-notes_pgdata Removing 
+ Volume abdur-notes_pgdata Removed 
+ Network abdur-notes_default Removed 
+  volumes matching abdur-notes:
+    (none)
+--- up again on the volume docker just re-created ---
+  ready after 2 tries
+  notes after 'down -v' + 'up': 0   (was 50003)
+
+
+========== STEP 5 -- restore from the backup ==========
+SET
+SET
+SET
+SET
+SET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+SET
+SET
+SET
+ALTER TABLE
+ALTER TABLE
+DROP INDEX
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+DROP SEQUENCE
+DROP TABLE
+DROP SEQUENCE
+DROP TABLE
+DROP SEQUENCE
+DROP TABLE
+SET
+SET
+CREATE TABLE
+ALTER TABLE
+CREATE SEQUENCE
+ALTER SEQUENCE
+ALTER SEQUENCE
+CREATE TABLE
+ALTER TABLE
+CREATE SEQUENCE
+ALTER SEQUENCE
+ALTER SEQUENCE
+CREATE TABLE
+ALTER TABLE
+CREATE SEQUENCE
+ALTER SEQUENCE
+ALTER SEQUENCE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+COPY 50003
+COPY 150003
+COPY 5
+ setval 
+--------
+  50003
+(1 row)
+
+ setval 
+--------
+ 150003
+(1 row)
+
+ setval 
+--------
+      5
+(1 row)
+
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+ALTER TABLE
+ALTER TABLE
+restored from backups/notes-20260903-195919.sql.gz
+ notes 
+-------
+ 50003
+(1 row)
+
+  tags  
+--------
+ 150003
+(1 row)
+
+  notes after restore: 50003
+
+--- are my marker rows actually back? ---
+  id   |      title      
+-------+-----------------
+ 50001 | TASK27-195849-1
+ 50002 | TASK27-195849-2
+ 50003 | TASK27-195849-3
+(3 rows)
+
+
+
+========== SUMMARY ==========
+  notes written                          50003
+  after 'down' + 'up'                    50003
+  after 'down -v' + 'up'                 0
+  after restore                          50003

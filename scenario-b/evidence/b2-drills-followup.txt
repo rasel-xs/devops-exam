@@ -1,0 +1,55 @@
+
+############ FU-1  why 'docker stop' gave 137 instead of 143 ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:12:41 CEST 2026
+  (stop took ~5s = the grace period expired = the signal was ignored)
+  (stop took ~0s = the process handled SIGTERM and left)
+  pid1-no-handler              exit=137   stop took 6s
+  pid1-with-handler            exit=0     stop took 1s
+  tini-init                    exit=143   stop took 1s
+  not-pid1-shell               exit=137   stop took 6s
+
+--- and our REAL server, which does install a handler ---
+  real-server                  exit=0     stop took 1s
+{"level":"info","msg":"listening","host":"8d31b79e08b7","port":3000,"version":"v1","pid":1}
+{"level":"info","msg":"shutting down","signal":"SIGTERM"}
+
+############ FU-2  did the compose OOM drill actually die? ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:13:12 CEST 2026
+
+--- state, and what command it is ACTUALLY running ---
+Status=running  ExitCode=0  OOMKilled=false  Restarts=0
+Cmd=["node","-e","const a=[]; setInterval(()=>a.push(Buffer.alloc(10*1024*1024)),50)"]
+Entrypoint=["docker-entrypoint.sh"]
+MemoryLimit=52428800
+
+--- its logs ---
+
+--- live memory usage against the limit ---
+abdur-notes-app-1  11.85MiB / 50MiB  23.70%
+
+############ FU-3  why the IP was unreachable across bridges ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:13:55 CEST 2026
+  postgres = 172.21.0.2
+
+--- the iptables chain that drops it ---
+
+--- timed out (DROP) or refused (RST)? -- same question as Scenario A task 8 ---
+  still hanging -> packets are being DROPPED, not refused  after 4006ms
+
+############ FU-4  why curl said 56 and not 7 ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:14:10 CEST 2026
+
+--- who is listening on the HOST side of 3120 ---
+LISTEN 0      4096         0.0.0.0:3120       0.0.0.0:*    users:(("docker-proxy",pid=748836,fd=8))                                                                                                      
+LISTEN 0      4096            [::]:3120          [::]:*    users:(("docker-proxy",pid=748842,fd=8))                                                                                                      
+
+--- curl, verbose, so the accept-then-die is visible ---
+*   Trying 127.0.0.1:3120...
+* Connected to 127.0.0.1 (127.0.0.1) port 3120
+* Empty reply from server
+  curl exit = 56
+
+--- CONTROL: a port with nothing on it at all -> exit 7, instantly ---
+  exit = 7
+
+############ follow-up complete ############
