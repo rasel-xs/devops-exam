@@ -1092,216 +1092,105 @@ additive, they are multiplicative — N queries, each a full table scan.
 
 ### Task 32 — The dashboard
 
-Dashboard `exam-REPLACE_WITH_EXAM_TOKEN`, exported to
-[`grafana/dashboard.json`](grafana/dashboard.json). One provisioning detail that
-matters: the datasource uid is pinned to `PROM_EXAM` in
-`grafana/provisioning/datasources/prometheus.yml` and referenced by that uid in
-the dashboard JSON. Without pinning, Grafana generates a random uid and the
-exported dashboard shows "Datasource not found" on every panel when imported
-anywhere else — the usual reason a shared dashboard looks empty.
+[`grafana/dashboard.json`](grafana/dashboard.json), provisioned from
+[`grafana/provisioning/`](grafana/provisioning/). Nine panels, `route` and
+`tenant` template variables, and a deploy-annotation toggle. Evidence:
+`evidence/b3-task32.txt` plus the dashboard screenshots.
 
-#### Panel A — Top 5 slowest endpoints by p95
+Provisioning pins the datasource **uid to `PROM_EXAM`**, and the dashboard JSON
+references that uid. Without pinning, Grafana generates a random uid and an
+imported dashboard shows "Datasource not found" on every panel — the usual
+reason an exported dashboard is blank on someone else's machine. Verified
+through Grafana's own API:
 
-```promql
-topk(5, histogram_quantile(0.95,
-  sum by (le, route) (rate(http_request_duration_seconds_bucket[$__rate_interval]))))
+```
+/api/health                       database: ok, version 11.2.0
+/api/datasources                  uid=PROM_EXAM  url=http://prometheus:9090
+/api/datasources/uid/PROM_EXAM/health   "Successfully queried the Prometheus API"
+/api/search                       uid=notes-api-exam  title=exam-root-vmi…1536d427
 ```
 
-`le` must survive the `sum by (...)` or the quantile is meaningless — that label
-*is* the bucket boundary. Winner on my system: `<<FILL: route>>` at
-`<<FILL>>s`.
+**A screenshot proves the dashboard exists; it does not prove the panels
+work.** A mistyped metric name draws an empty panel, not an error, and a
+screenshot taken in a quiet minute looks identical. So
+[`docker/b3-panels.py`](docker/b3-panels.py) reads the dashboard JSON, extracts
+every target, substitutes `$__rate_interval`, and evaluates all of them against
+Prometheus — printing the datasource uid per target as it goes. Result:
+`every panel target returned data`.
 
-#### Panel B — Most total time consumed
+| Panel | What it showed under load |
+| --- | --- |
+| A — p95 by endpoint | `/api/notes` mean **22.1 s**, max **58.5 s**; `/api/notes/:id` 387 ms; `/api/search` 253 ms |
+| B — seconds of work per second | `/api/notes` **3.27** mean, **59.5** peak; next endpoint 0.56 |
+| C — query mean vs p99 | `tags_for_note` mean 62.7 ms against p99 236 ms; `notes_list` 83.3 / 201 ms |
+| D — slowest query and its rate | `stats_join` p99 **837 ms** at **4.36 req/s**; `tags_for_note` p99 **239 ms** at **328 req/s** |
+| E — N+1 detector | `/api/notes` mean **96.9**, max **468**; every other route flat at 1–2 |
+| F — queries slower than 50 ms | `tags_for_note` **102 req/s** mean, **358 req/s** peak; everything else under 1 |
+| G — rows returned | `notes_list` p50 **15.4**, p99 peaks near **4,000** |
+| H — by tenant | acme p95 **27.0 s** (max 58.5 s) against globex **2.18 s**, hooli **2.32 s** |
+| I — saturation | in-flight max **55**, p95 max **56.6 s**, and the latency peak *lags* the concurrency peak |
 
-```promql
-topk(5, sum by (route) (rate(http_request_duration_seconds_sum[$__rate_interval])))
-```
+**Panel B is the one that decides what to fix**, not A. A ranks "slowest per
+request"; B is `rate(_sum)`, which is latency × call rate — where the server's
+time actually goes. An endpoint that takes five seconds but runs twice a day is
+not the problem.
 
-The `_sum` series accumulates total seconds spent, so `rate(_sum)` is *seconds
-of work per second*: a value of 3 means this route occupies 3 seconds of
-processing for every wall-clock second, i.e. it needs 3 workers just to keep up.
+**Panel D makes the same point one layer down, and it is the sharpest number on
+the dashboard.** `stats_join` is 3.5× slower *per call* than `tags_for_note`,
+so a "slowest query" list would put it first. But 0.837 × 4.36 ≈ **3.6 s/s** of
+database time against 0.239 × 328 ≈ **78 s/s**. `tags_for_note` costs about
+**22× more total time**. The slowest query is not the one to fix; the one to fix
+is duration × frequency, which is why both columns are on one panel.
 
-Winner: `<<FILL: route>>` at `<<FILL>>s/s.
+**Panel F's threshold has to be an existing bucket boundary.**
+`count(all) - count(le="0.05")` is the rate of queries in the tail above 50 ms,
+and 0.05 is a real edge in `db_query_duration_seconds`. Asking for 0.06 would
+return nothing at all, silently, because no such bucket exists.
 
-**Why A and B are different, and why B matters more.** A ranks by cost *per
-request*. B ranks by cost × frequency — where the server's time actually goes.
-An endpoint at 5 seconds called twice an hour contributes ~0.003 s/s of load;
-one at 200 ms called 500 times a second contributes 100 s/s and needs a hundred
-concurrent workers. The first wins panel A and is nearly irrelevant; the second
-wins panel B and is the reason the box is on fire.
+**Panel I answers a question A cannot.** Concurrency on the left axis, latency
+on the right. The two peaks are not simultaneous: in-flight peaks first and p95
+follows. That lag is queueing — work waiting for a resource rather than each
+request individually costing more — and the resource is the connection pool,
+`PG_POOL_MAX=10` with 55 requests in flight. If latency had risen *with*
+concurrency instead, the answer would have been per-request work.
 
-On my system `<<FILL>>` tops A and `<<FILL>>` tops B. `/healthz` is the clearest
-illustration of the gap: individually trivial, but scraped and probed so often
-that it can still climb panel B.
+**Three bugs found by looking at the finished dashboard, each with a fix.**
 
-Practically: **A tells you what to apologise to a user for, B tells you what to
-optimise.** Fixing the panel-A winner improves one person's experience; fixing
-the panel-B winner gives capacity back to everyone. The one caveat is that B is
-biased toward high-traffic endpoints that may already be efficient — so use B to
-choose *where* to look and A to judge whether what you find is actually
-pathological.
+1. **Panels A and H reported a p95 of exactly `10`.** Not a coincidence: 10 was
+   the top bucket of `http_request_duration_seconds`, and when the quantile
+   falls in the `+Inf` bucket `histogram_quantile` returns the highest *finite*
+   boundary. Proved before touching anything:
 
-#### Panel C — Mean and p99 DB duration by query
+   ```
+   le="10"    acme 293      globex 325   initech 313
+   le="+Inf"  acme 408      globex 325   initech 313
+   ```
 
-```promql
-# mean
-sum by (query_name) (rate(db_query_duration_seconds_sum[$__rate_interval]))
-/ sum by (query_name) (rate(db_query_duration_seconds_count[$__rate_interval]))
-# p99
-histogram_quantile(0.99,
-  sum by (le, query_name) (rate(db_query_duration_seconds_bucket[$__rate_interval])))
-```
+   115 of acme's requests — 28% — were slower than 10 s, so its p95 was
+   genuinely off the end of the histogram, while globex's 4.1 s was a real
+   measurement. Buckets now extend to `15, 30, 60`, and the same p95 measured
+   **43.7 s**. The dashboard had been understating the worst case by more than
+   4×. A histogram can only ever report what its buckets can express, and this
+   is the direction that matters: it under-reports, so it looks healthy.
 
-Both on one panel so the *gap* is visible. Mean near p99 means consistent work;
-a 2 ms mean with a 400 ms p99 means most calls are fine and a small share are
-pathological — a cold cache, a lock, or one tenant with far more rows.
+2. **Panel H's error rate matched only `status=~"5.."`.** After task 31 made
+   client aborts visible as `499`, the tenant panel was excluding exactly the
+   failures that task had just surfaced. Now `status=~"5..|499"`, and acme's
+   error rate reads 22%.
 
-Observed: `tags_for_note` mean `<<FILL>>`, p99 `<<FILL>>`; `search_notes` mean
-`<<FILL>>`, p99 `<<FILL>>`; `stats_join` mean `<<FILL>>`, p99 `<<FILL>>`.
+3. **Panel D rendered 363 calls/sec as "6.06 mins".** The panel default unit is
+   seconds, correct for the p99 column, and the joined `calls/sec` column
+   inherited it. The number was right and the label was a lie — worse than a
+   blank panel, because a blank panel makes you investigate. Fixed with a
+   `reqps` unit override on that field, plus hiding the two `Time` columns that
+   the `joinByField` transformation leaves behind (both carry the same
+   evaluation timestamp and tell the reader nothing).
 
-#### Panel D — Slowest query and how often it runs
-
-Table joining p99 duration and calls/sec by `query_name`.
-
-Slowest: `<<FILL: probably search_notes or stats_join>>`.
-Most frequent: `<<FILL: probably tags_for_note, because of the N+1>>`.
-
-**Are they the same query? `<<FILL: no>>`** — and that is the interesting part.
-The slowest query runs `<<FILL>>` times a second; `tags_for_note` is individually
-fast but runs ~20× per `/api/notes` request, so its *total* cost is
-`<<FILL>>`× higher. Same lesson as panels A vs B, one layer down.
-
-#### Panel E — The N+1 detector
-
-```promql
-sum by (route) (rate(db_queries_per_request_sum[$__rate_interval]))
-/ sum by (route) (rate(db_queries_per_request_count[$__rate_interval]))
-```
-
-`/api/notes` sits at ~21 with `limit=20`; every other route sits at 1–2. That
-number *is* the N+1: one query for the notes plus one per note for its tags.
-Screenshot: `evidence/b3-panel-e-n1.png`.
-
-This is why the metric exists. A latency graph alone would show `/api/notes` as
-"a bit slow" and you would go looking at query plans. Queries-per-request says
-immediately that the problem is the *number* of round trips, not the cost of any
-one of them — a distinction latency cannot make, because 21 fast queries and 1
-slow one can produce the same total.
-
-#### Panel F — Harmful queries over time
-
-```promql
-sum by (query_name) (rate(db_query_duration_seconds_count[$__rate_interval]))
-- sum by (query_name) (rate(db_query_duration_seconds_bucket{le="0.05"}[$__rate_interval]))
-```
-
-Total rate minus the rate of everything at or under the boundary = rate of
-queries slower than 50 ms.
-
-**Threshold justification (50 ms).** From my own panel C, normal query duration
-on this system is: `tags_for_note` p99 `<<FILL: e.g. 1.2ms>>`, `notes_list` p99
-`<<FILL: e.g. 8ms>>`, `note_by_id` p99 `<<FILL: e.g. 0.9ms>>`. So the ordinary
-working range is roughly `<<FILL>>`–`<<FILL>>` ms, and 50 ms is about
-`<<FILL: e.g. 6x>>` the p99 of a normal query — clearly abnormal *for this
-system*, not merely a round number. I would move it if the baseline moved; a
-threshold that is not derived from a baseline is a guess.
-
-The constraint that decided the exact figure: **the threshold must be an
-existing histogram bucket edge.** `le="0.06"` returns no data at all, silently,
-because no such bucket exists. My buckets include 0.05, and 0.05 was also the
-closest edge to the "several times the normal p99" figure — which is a good
-example of instrumentation design constraining analysis later.
-
-#### Panel G — Rows returned distribution
-
-```promql
-histogram_quantile(0.99,
-  sum by (le, query_name) (rate(db_rows_returned_bucket[$__rate_interval])))
-```
-
-p99 on `notes_list` is `<<FILL: ~5000>>` — that is Problem 4 visible: a client
-asking for `?limit=5000` and being given it.
-
-**What maximum I would set, and what the API should do above it.** Cap at
-**100** for a general list endpoint. Reasoning from the data rather than taste:
-p50 here is `<<FILL: 20>>`, so 100 is already several times the normal request
-and covers legitimate use; 5000 rows is `<<FILL>>` KB of JSON that has to be
-serialised, buffered and sent while holding a pool connection, and it is
-essentially never what a UI needs.
-
-On a request above the cap, the API should **clamp and say so**, not fail:
-return 100 rows with the response reporting `limit: 100`, `requested: 5000`, a
-`next` cursor, and a `Warning` header. Rejecting with 400 is defensible and
-stricter, but it breaks existing clients on the day you deploy the fix, whereas
-clamping degrades them gracefully. What it must not do is silently return fewer
-rows with no indication — a client that pages by counting results would then
-loop forever.
-
-The deeper fix is to stop using `LIMIT/OFFSET` for deep pagination at all —
-`OFFSET 40000` makes Postgres walk and discard 40,000 rows. Keyset pagination
-(`WHERE id > $last ORDER BY id LIMIT $n`) is O(limit) regardless of depth.
-
-#### Panel H — Error rate and p95 by tenant
-
-```promql
-histogram_quantile(0.95, sum by (le, tenant) (rate(http_request_duration_seconds_bucket[$__rate_interval])))
-sum by (tenant) (rate(http_requests_total{status=~"5.."}[$__rate_interval]))
-/ sum by (tenant) (rate(http_requests_total[$__rate_interval]))
-```
-
-Worst tenant: **acme**, p95 `<<FILL>>` against `<<FILL>>` for the others.
-
-**Is it more data, or heavier requests?** Both are deliberately true of acme —
-it holds 30,000 of the 50,000 notes *and* the load generator sends it
-`?limit=5000` — so the panel alone cannot attribute it. Separating them needs a
-controlled comparison, which the metrics already support:
-
-1. Compare **like for like**: p95 for `route="/api/notes"` at the *same* limit
-   across tenants. Send acme `?limit=20` for a minute and compare against
-   globex at `?limit=20`. If acme is still slower, data volume matters. Result:
-   `<<FILL>>`.
-2. Compare **the same tenant at different weights**: globex at `?limit=5000` vs
-   globex at `?limit=20`. If globex degrades to acme's numbers, request shape
-   is the cause. Result: `<<FILL>>`.
-3. Cross-check with `db_rows_returned` by tenant and `db_queries_per_request` —
-   if acme's rows-returned is 250× and its latency is only `<<FILL>>`× worse,
-   the cost is dominated by the request shape, not by the table size.
-
-Expected answer, to be confirmed by the run: **primarily heavier requests.**
-`idx_notes_tenant_id` exists, so having 30,000 rows costs an index lookup, not a
-scan — but returning 5,000 of them costs 250× the row-fetching, serialisation
-and N+1 tag queries. The 30,000 rows amplify it (deeper `OFFSET`s, more tags)
-but the request shape dominates. My evidence for that claim is step 2:
-`<<FILL>>`.
-
-This is exactly the multi-tenant failure mode worth understanding — one tenant's
-usage pattern degrading a shared service for everyone else. It is the argument
-for per-tenant rate limits and per-tenant query cost budgets, not just global
-ones.
-
-#### Panel I — Saturation
-
-`http_requests_in_flight` against overall p95, latency on a second axis.
-
-**Did latency rise with concurrency, or later?** `<<FILL: observed>>`.
-
-How to read it:
-
-- **Simultaneous rise** → the bottleneck is per-request work. Each request is
-  independently expensive (CPU, or a slow query), and more requests simply means
-  proportionally more work. Fix the work.
-- **Latency lags concurrency, then rises sharply** → requests are **queueing**
-  behind a fixed-size resource. Here that is almost certainly the
-  10-connection Postgres pool (`PG_POOL_MAX=10`): up to 10 concurrent requests
-  proceed at full speed, and the 11th waits for a connection. That gives a flat
-  latency line followed by a knee, which is the signature of a queue rather than
-  of expensive work.
-- Latency continuing to climb after the burst ends → the queue is still
-  draining, which tells you the system was over capacity, not merely busy.
-
-During my burst, in-flight went from `<<FILL>>` to `<<FILL>>` and p95 went from
-`<<FILL>>` to `<<FILL>>`, with a `<<FILL>>` second lag — so the bottleneck is
-`<<FILL>>`.
+**One property of table panels worth knowing.** Panel D's targets are *instant*
+queries, so during a quiet minute every cell reads `NaN` / `0 req/s`. That is
+correct, not broken — but it means the table is only meaningful while traffic
+is flowing, which is why the final screenshots were taken with the load
+generator running.
 
 ### Task 33 — The alert that fires
 

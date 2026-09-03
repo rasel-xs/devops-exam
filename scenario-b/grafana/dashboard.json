@@ -233,7 +233,7 @@
       "id": 4,
       "type": "table",
       "title": "D \u2014 Slowest query and how often it runs",
-      "description": "Two instant queries in a table: p99 duration per query_name, and calls per second. The slowest query is not automatically the one to fix \u2014 multiply the two columns to get total cost, which is the table version of panel B.",
+      "description": "Two instant queries in a table: p99 duration per query_name, and calls per second. The slowest query is not automatically the one to fix \u2014 multiply the two columns to get total cost, which is the table version of panel B.  Unit note: the panel default is seconds (correct for p99), so the calls/sec column needs an explicit `reqps` override -- without it Grafana rendered 363 calls/sec as \"6.06 mins\". The number was right and the label was a lie, which is worse than a blank panel.",
       "datasource": {
         "type": "prometheus",
         "uid": "PROM_EXAM"
@@ -279,7 +279,42 @@
             "mode": "palette-classic"
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "calls/sec"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Time.*"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {

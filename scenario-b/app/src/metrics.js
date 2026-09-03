@@ -29,10 +29,19 @@ const httpRequestDuration = new client.Histogram({
   help: 'HTTP request latency',
   labelNames: ['route', 'method', 'tenant'],
   // Buckets straddle the range that matters here: sub-10ms for /healthz, and
-  // out to 10s for the unbounded ?limit=5000 case. p95 is only as accurate as
-  // the bucket it lands in, so there is deliberate resolution around 50-500ms
-  // where the real endpoints live.
-  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  // out to a full minute for the unbounded ?limit=5000 case. p95 is only as
+  // accurate as the bucket it lands in, so there is deliberate resolution
+  // around 50-500ms where the real endpoints live.
+  //
+  // 15/30/60 were added after B3 task 32. The original top bucket was 10s, and
+  // panels A and H reported a p95 of exactly `10` for /api/notes and for the
+  // acme tenant. That is not a measurement: when the quantile falls in the
+  // +Inf bucket, histogram_quantile returns the highest FINITE boundary. The
+  // dashboard was quietly reporting 10s for requests that actually ran past
+  // 30s until curl gave up on them -- understating the worst case, which is
+  // the one number a latency panel exists to show. A histogram can only ever
+  // report what its buckets can express.
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 60],
   registers: [register],
 });
 
