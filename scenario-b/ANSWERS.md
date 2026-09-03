@@ -222,53 +222,108 @@ cache sharing between images and makes pulls slower overall.
 
 ### Task 25 — No secrets in the image
 
-```bash
-docker save notes-api:multi -o /tmp/img.tar
-mkdir -p /tmp/img && tar -xf /tmp/img.tar -C /tmp/img
-grep -ri "password\|secret\|api_key\|BEGIN.*PRIVATE KEY" /tmp/img --include='*' -l
-docker run --rm --entrypoint sh notes-api:multi -c 'ls -la /app; cat /app/.env' # no such file
-docker history --no-trunc notes-api:multi | grep -i env
+Transcript: [`evidence/b1-session.txt`](evidence/b1-session.txt).
+
+**"My scan found nothing" is not evidence.** A scan that finds nothing might
+simply be broken — and mine was, twice. The first version counted `*.tar`
+files, which Docker 25+ no longer produces (it writes OCI blobs under
+`blobs/sha256/`), and it used `grep -I`, which **skips binary files** — so it
+never looked inside the gzipped layer blobs at all, then cheerfully reported
+"no secrets found".
+
+So the test now runs against a **negative control** first:
+[`docker/Dockerfile.leaky`](docker/Dockerfile.leaky) writes a known credential
+and deletes it in a later layer, exactly the trap the brief describes.
+
+```
+>>> NEGATIVE CONTROL
+    (the file is NOT in the running container:)
+    ls: /app/.env: No such file or directory
+    (but the bytes are still in an earlier layer:)
+      layers extracted : 4
+      MATCHES:
+        l3/app/.env
+            > DB_PASSWORD=hunter2-LEAKED-MARKER-9f3a
 ```
 
-Result: `<<FILL: paste the empty grep output>>`.
+The scan recovers a secret that `rm` was supposed to have destroyed. Only now
+does the result for the real image mean anything:
+
+```
+>>> THE REAL IMAGE, scanned exactly the same way:
+  layers extracted : 10
+  MATCHES (each needs triage -- a match is not automatically a leak):
+    l7/opt/yarn-v1.22.22/lib/cli.js
+        > secretAccessKey: env.AWS_SECRET_ACCESS_KEY || env.AWS_SECRET_KEY,
+    l6/usr/local/lib/node_modules/npm/man/man7/config.7
+        > key="-----BEGIN PRIVATE KEY-----\nXXXX\nXXXX\n-----END PRIVATE KEY-----"
+    l6/.../npm/node_modules/@npmcli/config/lib/definitions/definitions.js
+    l6/.../npm/docs/content/using-npm/config.md
+    l6/.../npm/docs/output/using-npm/config.html
+```
+
+**Five matches, all false positives, and each one triaged by reading the
+matching line** — which is why the scan prints it rather than just the
+filename:
+
+- yarn's `cli.js` reads the *name* of an environment variable; there is no
+  value in the image.
+- The four npm files are documentation showing the format of the `key` config
+  option. The "key" is the literal string `XXXX`.
+
+A scan that only printed filenames would have produced five alarming-looking
+paths and no way to judge them.
+
+### The part I did not expect: my own image proves the lesson
+
+Those matches are in layers **l6 and l7** — npm's and yarn's files. But I
+*removed* npm and yarn in the runtime stage, and verified it:
+
+```
+$ docker run --rm abdur/notes-api:multi sh -c 'command -v npm'
+  absent
+```
+
+Both are true at once:
+
+| Question | Answer |
+| --- | --- |
+| Can a process in the container run npm? | **No** — the whiteout hides it |
+| Are npm's bytes still in the image? | **Yes** — intact in layer 6 |
+| Did removing it shrink the image? | **No** — the `rm` layer is **28.7 kB**, not −130 MB |
+
+So my own `rm -rf npm` is the exact same mistake as `RUN rm /app/.env`, just
+with something harmless. It buys a real security property (no package manager
+reachable at runtime) and **zero** of the properties people assume it buys.
 
 **Why `rm` in a later layer does not help.** An image is an ordered stack of
-immutable filesystem layers plus a manifest. Each `RUN`/`COPY` adds a new layer
-containing only that step's changes; earlier layers are never modified, because
-they are content-addressed and shared between images. When a later layer deletes
-a file, the union filesystem records a *whiteout* entry — a marker that says
-"hide this path from here on". The bytes of the original file are still sitting
-in the earlier layer, unchanged.
-
-That marker only affects what a running container sees. Anyone who has the image
-can ignore it entirely:
+immutable, content-addressed layers. Each instruction adds a layer containing
+only its changes; earlier layers are never modified, because they are shared
+between images and identified by their content hash. Deleting a file writes a
+**whiteout** entry — a marker meaning "hide this path from here down". That
+marker governs what a *running container* sees. Anyone holding the image can
+ignore it entirely:
 
 ```bash
-docker save leaky:v1 | tar -x            # every layer, as tarballs
-# or, without even downloading: read the layer blobs straight from the registry
+docker save leaky:v1 -o img.tar && tar -xf img.tar
+# extract each layer blob and read the file straight out of the earlier layer
 ```
 
-and read the secret out of the earlier layer. So:
+or read the layer blobs directly from the registry without even pulling.
 
-```dockerfile
-COPY .env /app/.env
-RUN cat /app/.env > /dev/null && rm /app/.env    # the secret is STILL in the image
-```
+**What actually works:**
 
-The three things that actually work:
-
-1. **Never copy it in.** `.env` is in `app/.dockerignore`, so it is not even in
-   the build context. This is the fix I used.
+1. **Never let it into the build context.** `.env` is in
+   [`app/.dockerignore`](app/.dockerignore) (lines 7-8), so it cannot reach any
+   layer. This is the fix I used.
 2. **Build secrets** — `RUN --mount=type=secret,id=npmrc ...`. BuildKit mounts
-   it for that one command and it is never committed to any layer.
-3. **Inject at runtime** — environment variables, a mounted file, or a secrets
-   manager. Docker Swarm secrets are mounted at `/run/secrets/` in a tmpfs.
+   it for one command and it is never committed to a layer.
+3. **Inject at runtime** — environment variables, a mounted file, or Swarm
+   secrets in a tmpfs at `/run/secrets/`.
 
 And if a secret has already been built into a pushed image, the only real
-remediation is to **rotate the secret**. Deleting the image or the tag does not
-un-publish bytes that someone may already have pulled.
-
----
+remediation is to **rotate the secret**. Deleting the tag does not un-publish
+bytes someone may already hold.
 
 ## B2 — Compose, storage, debugging
 
