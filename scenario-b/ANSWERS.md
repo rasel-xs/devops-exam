@@ -498,100 +498,264 @@ possibly unstartable copy unless Postgres is stopped first or you use
 
 ### Task 28 — The debugging drill
 
-Compose overrides that cause each fault are in
-[`docker/drills/`](docker/drills/); [`run-drills.sh`](docker/drills/run-drills.sh)
-causes and diagnoses all four in one capture.
+Four failures, each caused deliberately and then diagnosed. Scripts:
+`docker/drills/run-drills.sh`, `docker/drills/b2-task28-followup.sh`,
+`docker/drills/b2-task28-followup2.sh`. Evidence: `evidence/b2-drills.txt`,
+`evidence/b2-drills-followup.txt`, `evidence/b2-drills-followup2.txt`.
 
-#### a. Exit code 137
-
-- **Caused by:** `deploy.resources.limits.memory: 50M` plus an allocation loop.
-- **Symptom:** container disappears; `docker ps -a` shows `Exited (137)`. No
-  error in the app's own logs — it never got the chance to log anything.
-- **Command that revealed it:**
-  `docker inspect --format='{{.State.OOMKilled}}' <c>` → `true`, confirmed by
-  `dmesg | tail -20` showing the kernel's OOM killer picking the process.
-- **Fix:** raise the limit to something the workload needs, or reduce what the
-  process holds. For Node specifically, also set `--max-old-space-size` *below*
-  the container limit — V8 sizes its heap from the host's memory, not the
-  cgroup's, so by default it will happily grow past the container limit and get
-  killed while believing it has plenty of headroom.
-
-**What 137 means.** 128 + 9: the 128 says "terminated by a signal", the 9 is
-SIGKILL. Contrast 143 = 128 + 15 = SIGTERM, which means something asked politely
-— a `docker stop`, or a Swarm rolling update — and is usually *normal*. Telling
-those apart is most of the diagnosis. Note that 137 alone does **not** prove OOM:
-`docker kill` also produces 137. `State.OOMKilled: true` is what distinguishes
-them.
-
-#### b. Service name will not resolve, IP works
-
-- **Caused by:** putting `app` on its own `isolated` network that postgres is
-  not attached to.
-- **Symptom:** `getaddrinfo ENOTFOUND postgres`, while
-  `ping 172.18.0.3` succeeds.
-- **Command that revealed it:**
-  `docker inspect <c> --format '{{json .NetworkSettings.Networks}}' | jq` —
-  the two containers have no network in common.
-- **Fix:** put both on the same user-defined network.
-
-**Why.** Docker runs an embedded DNS resolver at `127.0.0.11` inside every
-container, and it only answers for containers that share a **user-defined**
-network. Different networks → the name does not exist. The IP still works
-because the host can route between bridges — which is exactly what makes this
-confusing, since "the network is fine, DNS is broken" looks like a DNS server
-problem rather than a topology problem.
-
-The bigger version of the same trap: the legacy default `bridge` network has no
-service discovery at all. Anything started with a plain `docker run` and no
-`--network` lands there and can never resolve a compose service name, no matter
-how the compose stack is configured.
-
-#### c. Volume mounted, directory empty
-
-- **Caused by:** `- ./empty-folder:/app/node_modules`.
-- **Symptom:** `Error: Cannot find module 'express'` — from an image that
-  demonstrably contains express.
-- **Command that revealed it:** `docker compose exec app ls -la /app/node_modules`
-  (empty) plus `docker inspect --format='{{json .Mounts}}' <c> | jq` showing a
-  bind mount at that path.
-- **Fix:** do not mount over a path the image populates. For live-reload
-  development the usual pattern is to mount the source but leave
-  `node_modules` alone with an anonymous volume: `- ./src:/app/src` plus
-  `- /app/node_modules`.
-
-**Why.** A **bind mount replaces** whatever the image had at that path. It does
-not merge and it does not overlay — the host directory is mounted over the top
-and the image's contents there become unreachable for the life of the container.
-They are still in the image; they are shadowed.
-
-**Named volumes behave differently, and this is the part worth knowing.** When a
-named volume is *empty and newly created*, Docker copies the image's contents at
-that path into the volume before mounting it, so `- node_modules:/app/node_modules`
-appears to work. But that copy happens **exactly once**. After the first run the
-volume has its own contents and is used as-is, so rebuilding the image with an
-added dependency changes nothing — the classic "I installed the package, rebuilt,
-and it still says module not found", fixed only by deleting the volume. Bind
-mounts never do the copy, even when the host directory is empty.
-
-#### d. Port published, connection refused
-
-- **Caused by:** `HOST=127.0.0.1`, so the app binds the container's loopback.
-- **Symptom:** `docker compose ps` shows the container up with 3000 published;
-  `curl localhost:3000` is refused; `docker compose exec app wget -qO-
-  http://127.0.0.1:3000/healthz` works perfectly.
-- **Command that revealed it:** `docker compose exec app netstat -lntp` →
-  `tcp 127.0.0.1:3000 LISTEN`. `0.0.0.0:3000` would have pointed at the
-  firewall or the publish flag instead.
-- **Fix:** bind `0.0.0.0` (the app's default; the drill overrides it).
-
-**Why.** `ports:` sets up forwarding from the host into the container's network
-namespace, and traffic arrives on the container's `eth0`. A listener on
-`127.0.0.1` inside that namespace is unreachable from outside it by design —
-that is what loopback means. Same failure as Scenario A task 8, one layer down,
-and the same diagnostic: refused means something answered with a RST, timed out
-means the packets vanished.
+Every drill below is written as: symptom → the *one* command that settles it →
+root cause → fix. Four of my initial explanations were wrong; each is recorded
+with what actually happened, because a wrong hypothesis that survived a test is
+worth more than a right one that was never tested.
 
 ---
+
+#### 28a — container exits with code 137
+
+**Symptom.** `docker ps -a` shows `Exited (137)`.
+
+**Reading the number.** `137 = 128 + 9`. The 128 means "killed by a signal",
+the 9 is `SIGKILL`. Compare `143 = 128 + 15 = SIGTERM`, which means something
+asked it to stop politely.
+
+**137 on its own proves nothing**, and that is the trap. Two controls:
+
+| what I did | ExitCode | OOMKilled |
+| --- | --- | --- |
+| 50 MB limit, process allocates past it | 137 | **true** |
+| `docker kill` | 137 | **false** |
+| `docker stop` on a container with a handler | 0 | false |
+
+**The command that settles it:**
+
+```bash
+docker inspect --format='{{.State.ExitCode}} {{.State.OOMKilled}}' <cid>
+```
+
+`.State.OOMKilled` is the only field that separates a kernel OOM kill from any
+other `SIGKILL`.
+
+**Fix.** Raise the limit, or lower the app's memory ceiling to fit inside it
+(`NODE_OPTIONS=--max-old-space-size`), so the runtime GCs instead of the kernel
+killing. A limit below what the runtime needs at rest is not a limit, it is a
+timer.
+
+**Wrong prediction 1 — `docker stop` gave 137, not 143.**
+The test container ran `node -e 'setInterval(...)'` with no `SIGTERM` handler,
+as PID 1. **The kernel does not apply default signal actions to PID 1.** With
+no handler installed the signal is simply discarded; Docker's grace period
+expired and `SIGKILL` followed. Proved by four variants, where the *time
+`docker stop` took* is the tell:
+
+| PID 1 | exit | `docker stop` took |
+| --- | --- | --- |
+| node, no handler | 137 | **6 s** (grace expired) |
+| node, `process.on('SIGTERM')` | 0 | 1 s |
+| tini (`--init`), node as its child | **143** | 1 s |
+| `sh -c 'node …'` | 137 | 6 s |
+| our real `server.js` | 0 | 1 s, and it logged `shutting down` |
+
+The tini row is the proof of the mechanism: the *same* handler-less node exits
+143 the moment it is no longer PID 1, because the default action applies again.
+
+The `sh -c` row surprised me too: busybox `sh` **exec-replaces itself** when
+given a single simple command, so node was PID 1 again. See 28a-note below.
+
+**Wrong prediction 2 — the compose version "ignored the memory limit".**
+`docker inspect` after a fixed `sleep 15` said `Status=running`, and I nearly
+wrote that `deploy.resources` is not honoured outside Swarm. It is honoured
+(`MemoryLimit=52428800`). Two hypotheses, both testable:
+
+- *swap* — rejected: `MemorySwap=104857600` in both cases, and the host has
+  `Swap: 0B`;
+- *page residency* — confirmed: `Buffer.alloc(n)` returns zeroed memory that
+  can be a fresh anonymous mapping which is never written, so it costs address
+  space and not resident pages, and a cgroup charges **resident** pages.
+
+| code | time to OOM |
+| --- | --- |
+| `Buffer.alloc(10MB)` | **87 s** |
+| `Buffer.alloc(10MB).fill(1)` | **< 1 s** |
+
+Both end at `137 / OOMKilled=true`. The difference is speed, not outcome — so
+the real bug was **my fixed `sleep 15`**, which was shorter than the failure it
+was waiting for. A hard-coded sleep in a test can invert the test's conclusion.
+`run-drills.sh` now waits on `docker wait` instead.
+
+**28a-note, and it applies to our own stack.** Our compose runs
+`command: ["sh", "-c", "node db/migrate.js && node src/server.js"]`. That is a
+*compound* command, so I expected `sh` to remain PID 1 and swallow `SIGTERM`,
+breaking graceful shutdown — which would matter in B4, where rolling updates
+stop tasks with `SIGTERM`. Checked instead of assumed:
+
+```
+$ docker compose exec app ps -o pid,args
+PID   COMMAND
+    1 node src/server.js
+```
+
+`sh` exec's the **last** command of a list rather than forking it, so node ends
+up as PID 1 anyway; `docker compose stop` returned in 1 s with
+`{"msg":"shutting down","signal":"SIGTERM"}` in the log. So the stack is
+correct — but by an optimisation in `ash`, not by design. Append anything after
+`node src/server.js` and `sh` would stay at PID 1 and the shutdown handler
+would never run. The robust form is `exec node src/server.js` in an entrypoint.
+
+---
+
+#### 28b — the app cannot reach the DB by service name
+
+**Symptom.** `getaddrinfo ENOTFOUND postgres` from the app; the database is
+plainly running.
+
+**The command that settles it** — the same lookup from three networks, using
+node's `dns.lookup` (i.e. `getaddrinfo`, the exact path the app uses) rather
+than `getent`, which is a busybox applet that may not exist and would produce a
+"does not resolve" that really means "no such binary":
+
+```bash
+docker run --rm --network <net> $IMG node -e "require('dns').lookup('postgres', ...)"
+```
+
+| network | result |
+| --- | --- |
+| `abdur-notes_default` (postgres's own) | `postgres -> 172.21.0.2` |
+| the legacy default `bridge` | `ENOTFOUND` |
+| a different user-defined bridge | `EAI_AGAIN` |
+
+**Root cause.** Docker's embedded DNS resolver — `nameserver 127.0.0.11`, which
+is in every container's `/etc/resolv.conf` and shows up in the container's own
+`netstat` as `127.0.0.11:45117 LISTEN` — only answers for containers that share
+a **user-defined** network. The legacy `bridge` network has no service
+discovery at all, which is why anything started with a plain `docker run` and
+no `--network` can never resolve a compose service name.
+
+The two error codes differ for a reason: `ENOTFOUND` is NXDOMAIN (the resolver
+answered "no such name"), `EAI_AGAIN` is a resolution failure/timeout.
+
+**Fix.** Put both containers on the same user-defined network — which is what
+compose does by default, and why this only bites people who mix `docker run`
+with a compose stack.
+
+**Wrong prediction 3 — "the IP will still route, so it is purely DNS."**
+It did not: the TCP connect from the default bridge to `172.21.0.2:5432` hung
+for the full 4000 ms timeout. Docker isolates bridge networks in the packet
+filter, so it is **both** a name-resolution failure and a connectivity block.
+
+The hang is itself diagnostic, and it is the Scenario A task 8 distinction one
+layer down: **4 s of silence = the packets were DROPPED**; a refusal would have
+come back as an instant RST (`ECONNREFUSED`).
+
+Locating the rule turned up something worth recording: this host runs
+`iptables v1.8.10 (nf_tables)`, and `iptables -S DOCKER-ISOLATION-STAGE-1`
+returns **nothing** — the `DOCKER-ISOLATION-STAGE-1/2` chains that every
+tutorial names do not exist on modern Docker. The live ruleset instead has
+`DOCKER-FORWARD`, `DOCKER-BRIDGE`, `DOCKER-INTERNAL` and `DOCKER-CT` under
+`table ip filter`, with per-bridge `iifname … accept` rules. I could not pin
+the single dropping rule from the truncated `nft list ruleset` output, so I am
+not going to claim one; the observed behaviour (silent drop, no RST) is the
+evidence, and the chain names are where to look.
+
+---
+
+#### 28c — volume mounted, the app sees an empty directory
+
+**Symptom.** `Error: Cannot find module 'pg'`, `requireStack: ['/app/src/db.js',
+'/app/db/migrate.js']`, and the container crash-loops.
+
+**The command that settles it.** The container is crash-looping, so `exec` is
+not available — use a throwaway container with the *same* mount:
+
+```bash
+docker run --rm -v "$PWD/docker/drills/empty-folder":/app/node_modules $IMG \
+  sh -c 'ls -A /app/node_modules | wc -l'
+```
+
+| what | entries in `/app/node_modules` |
+| --- | --- |
+| with the bind mount | **1** (just the `.gitkeep`) |
+| the same image, no mount | **87** |
+| an empty **named volume** | **87** |
+
+**Root cause.** A **bind mount replaces** whatever the image had at that path.
+It does not merge and it does not overlay; the image's contents are still in
+the image, they are simply shadowed for the life of the container.
+
+**The contrast is the part worth knowing.** When a **named volume** is new and
+empty, Docker *copies* the image's contents at that path into the volume on
+first use — hence 87 entries. But that copy happens exactly once. After that
+the volume has its own contents, and a rebuilt image with updated dependencies
+is ignored. That is the real explanation for "I added a package, rebuilt, and
+it still says module not found". Bind mounts never do the copy, even from an
+empty host directory.
+
+**Fix.** Do not mount over `node_modules`. For live-reload development mount
+the source only (`./src:/app/src`), or use an anonymous volume to *protect* the
+image's copy (`- /app/node_modules`).
+
+---
+
+#### 28d — port published, connection refused from the host
+
+**Symptom.** `docker compose ps` shows `Up (healthy)` and
+`0.0.0.0:3120->3000/tcp`, but the host cannot reach it — while the app answers
+perfectly from inside:
+
+```
+$ docker compose exec app wget -qO- http://127.0.0.1:3000/healthz
+{"status":"ok","version":"v1","host":"9182ed82ed53"}
+```
+
+**The command that settles it:**
+
+```bash
+docker compose exec app netstat -lntp
+tcp  0  0  127.0.0.1:3000   0.0.0.0:*  LISTEN  1/node
+```
+
+`127.0.0.1:3000` means the **bind address** is wrong. `0.0.0.0:3000` would have
+meant "look at the firewall or the publish flag instead". After the fix the
+same command prints `0.0.0.0:3000` and the host gets `HTTP 200`. If `netstat`
+is missing, `/proc/net/tcp` says the same thing in little-endian hex —
+`0100007F` is 127.0.0.1, `00000000` is 0.0.0.0, `0BB8` is 3000.
+
+**Root cause.** The app bound the **container's** loopback interface.
+`ports:` DNATs host traffic into the container's network namespace where it
+arrives on `eth0` — an interface nothing is listening on. A listener on
+127.0.0.1 inside a namespace is unreachable from outside that namespace by
+design.
+
+**Fix.** Bind `0.0.0.0` inside the container (`HOST=0.0.0.0`, which is
+`server.js`'s default) and restrict exposure with the *publish* address
+instead — exactly as the compose file does for Postgres:
+`127.0.0.1:5433:5432`.
+
+**Wrong prediction 4 — I expected `curl` exit 7, and got 56.**
+My own legend said "7 = refused, 28 = timed out". Neither. Exit **56** is
+"failure receiving network data", and `curl -v` shows why:
+
+```
+* Trying 127.0.0.1:3120...
+* Connected to 127.0.0.1 (127.0.0.1) port 3120
+* Empty reply from server
+```
+
+`docker-proxy` is a userland process that itself **listens on the host port**
+(`ss -lntp` shows `0.0.0.0:3120 users:(("docker-proxy",pid=748836))`). It
+accepts the TCP connection first, *then* tries to reach the container and
+fails, and closes. So the client sees a successful connect followed by nothing.
+
+Control, on a port with nothing on it at all: `curl` exit **7**, instantly.
+
+That gives three distinct signatures for "I cannot reach it", and Scenario A
+only produced two:
+
+| what happened | client sees | exit |
+| --- | --- | --- |
+| nothing is listening | instant RST | 7 |
+| packets dropped (firewall, bridge isolation) | full timeout | 28 |
+| a proxy accepts, then cannot forward | connect, then empty reply | **56** |
+
 
 ## B3 — Instrumentation, Prometheus and Grafana
 

@@ -17,6 +17,10 @@ services:
     # `deploy.resources` is honoured by `docker compose up` on Compose v2 and by
     # Swarm. On older Compose v1 it was silently IGNORED outside Swarm, which is
     # why so many people believe their memory limit "does not work".
+    # Without this the base file's `restart: unless-stopped` restarts the
+    # container forever and `docker inspect` shows the CURRENT run, where
+    # OOMKilled is still false. The evidence is on the DEAD container.
+    restart: "no"
     deploy:
       resources:
         limits:
