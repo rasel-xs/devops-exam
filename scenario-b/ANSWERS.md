@@ -761,36 +761,121 @@ only produced two:
 
 ### Task 29 — Metrics
 
-[`app/src/metrics.js`](app/src/metrics.js) and the middleware in
-[`app/src/server.js`](app/src/server.js). All six required metrics, plus
-`collectDefaultMetrics` for process/GC/heap.
+Implementation: [`app/src/metrics.js`](app/src/metrics.js), wired in
+[`app/src/server.js`](app/src/server.js). Evidence: `evidence/b3-task29.txt`
+from `docker/b3-task29.sh`.
 
-Two implementation points I want to draw attention to:
+| # | Metric | Type | What it is for |
+| --- | --- | --- | --- |
+| 1 | `http_requests_total` | Counter | throughput and error rate |
+| 2 | `http_request_duration_seconds` | Histogram | latency / p95 |
+| 3 | `db_query_duration_seconds` | Histogram | which named query is slow |
+| 4 | `db_queries_per_request` | Histogram | **the N+1 detector** |
+| 5 | `db_rows_returned` | Histogram | **the unbounded-`limit` detector** |
+| 6 | `http_requests_in_flight` | Gauge | saturation |
 
-**The `route` label is the Express pattern, never the path.** Taken from
-`req.route.path` after routing, so `/api/notes/48213` is recorded as
-`/api/notes/:id`. Using the real path would create one time series *per note id*
-— 50,000 series from one endpoint, each with its own histogram buckets, which is
-tens of thousands of series more than the rest of the app combined. That is
-"high cardinality", and it kills a Prometheus far faster than traffic does,
-because series count drives memory in the head block. Unmatched requests are
-bucketed as `"unmatched"` rather than labelled with whatever URL was probed —
-otherwise a vulnerability scanner walking random URLs would create unbounded
-series on your 404 handler. There is a **test** asserting this
-(`tests/api.test.js`, "the route label is a pattern, never a concrete id"), so
-someone "simplifying" it to `req.path` gets a red CI run rather than a dead
-Prometheus. `tenant` is safe to use as a label because it is bounded at 5 and it
-is the dimension we actually want to slice by; a user id would not be.
+`in_flight` is a **Gauge** and not a Counter for the obvious reason: it goes
+down as well as up. `collectDefaultMetrics` adds the Node process/GC/heap set;
+`process_start_time_seconds` out of that is what catches a crash-looping
+container, because it moves when nothing else says anything happened.
 
-**`db_queries_per_request` uses `AsyncLocalStorage`.** The naive approach — a
-module-level counter reset per request — is wrong on an async server: dozens of
-requests interleave on one event loop and the counts get attributed to whichever
-request happens to finish next. `AsyncLocalStorage` propagates a per-request
-store through every `await`, so the count belongs to the right request.
+**Cardinality — the decision that matters most.** The `route` label is always
+the route *pattern*, never the requested path:
+
+```js
+const route = req.route ? `${req.baseUrl}${req.route.path}` : 'unmatched';
+```
+
+Prometheus stores one time series per unique label combination, so labelling
+with the path would create a series per note id — 50,000 series from one
+endpoint, each carrying a full set of histogram buckets. `req.route` only
+exists once Express has matched a handler and it holds the pattern; anything
+unmatched is bucketed as `'unmatched'` rather than labelled with whatever URL a
+scanner probed. This is not fixable after the fact: once high-cardinality
+series are written they are in the TSDB until retention expires.
+
+Tested rather than asserted — the script issues **30 different note ids** and
+then fails if any route label contains a path segment that is a number:
 
 ```
-$ curl -s localhost:3000/metrics | head -50
+route="/api/notes"     route="/api/notes/:id"   route="/api/search"
+route="/api/stats"     route="/healthz"         route="/metrics"
+route="/readyz"        route="unmatched"
+PASS -- 30 different note ids produced ONE series, not 30
+total series exposed: 662
 ```
+
+`tenant` is safe as a label for the same reason `user_id` would not be: five
+bounded values, and it is the dimension the exam actually asks us to slice by.
+
+**Counting queries per request** uses `AsyncLocalStorage`:
+
+```js
+db.requestContext.run({ queries: 0 }, () => { … })
+```
+
+It gives a per-request store that survives every `await`, so `db.query()` can
+increment a counter that belongs to *this* request. A module-level variable
+would be corrupted by concurrent requests. The value is observed in
+`res.on('finish')`, once the response is actually complete.
+
+**The N+1, measured.** `GET /api/notes?limit=20` runs one query for the notes
+and then one per note for its tags:
+
+```
+db_queries_per_request_bucket{le="13",route="/api/notes"}  0
+db_queries_per_request_bucket{le="21",route="/api/notes"}  1     <- the jump
+db_queries_per_request_bucket{le="34",route="/api/notes"}  3
+db_queries_per_request_sum{route="/api/notes"}   65
+db_queries_per_request_count{route="/api/notes"}  3      -> mean 21.67
+```
+
+Zero through `le=13` and then a jump is the signature. The `21` bucket boundary
+exists precisely so that this shape is legible instead of being smeared across
+a 10–50 bucket. Compare a route without the problem:
+
+```
+db_queries_per_request_bucket{le="2",route="/api/notes/:id"} 29
+db_queries_per_request_bucket{le="3",route="/api/notes/:id"} 30   -> mean 2.03
+```
+
+The same problem seen from the other metric: `db_rows_returned` shows
+`notes_list` with **count=3** and `tags_for_note` with **count=90** — ninety
+round trips where three would do.
+
+**The totals reconcile exactly, and that is the check that the instrumentation
+is honest**, not just plausible:
+
+| route | arithmetic | total |
+| --- | --- | --- |
+| `/api/notes` ×3 | acme (tenant cached) 1+20=21; globex 1+1+20=22; initech 22 | **65** ✓ |
+| `/api/notes/:id` ×30 | first 1+1+1=3, then 29 × 2 | **61** ✓ |
+
+**Three mistakes worth recording.**
+
+1. & 2. **Grepping the exposition format.** I wrote the verification greps
+   against an assumed label order, twice. `_sum`/`_count` are emitted as
+   `{app="…",route="…"}` but `_bucket` as `{le="…",app="…",route="…"}` — `le`
+   comes **first**. My first attempt anchored on `{route=`; my second matched
+   `route="/api/notes",` with a trailing comma, when `route` is the last label
+   and is followed by `}`. Both printed nothing at all, which is
+   indistinguishable from a missing metric — I briefly suspected the app had
+   restarted and checked `process_start_time_seconds` before finding the real
+   cause. Never assume label order; anchor on `}`.
+
+3. **I predicted `le="21"` would be 0 on a fresh process** and it was 1. The
+   script runs the 30 `/api/notes/:id` requests *before* the list requests, and
+   those warm the acme tenant cache, so acme's list request costs 21 while the
+   two cold tenants cost 22. The metric was right; my model of the traffic was
+   not. It is the same lesson I had just written down for task 26: a number is
+   only interpretable if you know what happened before it.
+
+**One thing this run exposed for later.** `db_rows_returned{query_name="search_notes"}`
+has `sum=0` over 3 calls — `?q=alpha` can never match, because seeded bodies
+are concatenated md5 hex (`0-9a-f` only). Task 31's load generator therefore
+has to use hex fragments, and it has to use *rare* ones: a common fragment like
+`ab` fills `LIMIT 50` early and Postgres stops scanning, hiding the very
+sequential scan that deliberate problem 2 is about.
 
 ### Task 30 — Prometheus
 
