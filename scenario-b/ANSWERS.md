@@ -879,16 +879,107 @@ sequential scan that deliberate problem 2 is about.
 
 ### Task 30 — Prometheus
 
-[`docker/prometheus.yml`](docker/prometheus.yml). `scrape_interval: 5s` rather
-than the 15s default, because this exam's load runs for minutes and 15s gives
-too few points for a legible p95. In production 15s is the right answer — scrape
-interval is a storage cost multiplied by every series you have.
+Config: [`docker/prometheus.yml`](docker/prometheus.yml). Evidence:
+`evidence/b3-task30.txt` from `docker/b3-task30.sh`. Everything below is read
+back out of Prometheus's own HTTP API rather than from the UI looking green.
 
-The target is `app:3000`, the compose service name, resolved by Docker's
-embedded DNS. `localhost:3000` would be Prometheus's own container.
+```yaml
+scrape_configs:
+  - job_name: notes-api
+    static_configs:
+      - targets: ['app:3000']
+```
 
-Evidence: `evidence/b3-targets-up.png` (`/targets` showing UP), and
-`evidence/b3-query.png`.
+`app` is the compose **service name** and `3000` is the port **inside** the
+container, not the published 3120. Docker's embedded DNS resolves it because
+both containers are on the same user-defined network — the mechanism proven in
+B2 task 28b. `localhost:3000` would be Prometheus's own container.
+
+`scrape_interval: 5s` instead of the 15 s default because this exam's load runs
+for minutes: at 15 s a p95 graph has too few points to read. In production 15 s
+is the right answer — the scrape interval is a storage cost.
+
+**Result:**
+
+```
+job=notes-api    health=up   url=http://app:3000/metrics
+   interval=5s   lastDuration=0.0293s   lastScrape=2026-09-03T18:58:29Z
+job=prometheus   health=up   url=http://localhost:9090/metrics
+
+up  ->  1  {instance="app:3000", job="notes-api", service="notes-api"}
+head series: 1352
+```
+
+`lastError` is empty and `up` is 1, which is also the only DNS proof worth
+having here — see the note on `nslookup` below.
+
+**The queries that matter.**
+
+```promql
+sum by (route) (http_requests_total)
+sum(rate(http_requests_total[1m]))                                   -> 1.02 req/s
+histogram_quantile(0.95, sum by (route,le) (rate(http_request_duration_seconds_bucket[1m])))
+rate(db_queries_per_request_sum[1m]) / rate(db_queries_per_request_count[1m])
+```
+
+The last one is the general form for reading a mean out of any histogram: both
+`_sum` and `_count` are counters, so each needs its own `rate()` before the
+division. Dividing the raw counters would give the average since process start
+instead of the average right now.
+
+| route | mean DB queries/request | p95 latency |
+| --- | --- | --- |
+| `/api/notes` | **21.0** | **0.833 s** |
+| `/api/notes/:id` | 1.0 | 0.008 s |
+| `/healthz` | 0.0 | 0.009 s |
+
+A hundredfold latency difference, and the query-count column says why. This is
+the N+1 from task 29, now visible in PromQL rather than in raw exposition text.
+
+**Three things I got wrong or had to explain.**
+
+1. **`external_labels` are not on local series.** I queried `up{env="exam"}`
+   expecting a match and got nothing. That is correct behaviour:
+   `external_labels` are attached only when data *leaves* this Prometheus —
+   remote_write, federation, and alerts sent to Alertmanager — and are never
+   written into the local TSDB. `/api/v1/status/config` confirms `env: exam` is
+   loaded. It becomes visible in task 33, where the alert notification carries
+   it.
+
+2. **`nan` in the per-route means** is not an error. For a route with no
+   traffic in the window, `rate(_sum)/rate(_count)` is 0/0. Grafana panels have
+   to be told to hide it rather than draw a gap-shaped lie.
+
+3. **`/api/notes/:id` showed a mean of 1.0 query, not the 2.0 I expected.**
+   Checked instead of hand-waved:
+
+   ```
+   sum by (status) (http_requests_total{route="/api/notes/:id"})
+     status=200  30
+     status=404  40
+   ```
+
+   The load loop asked for ids 1–20 as tenant `globex`, but ids 1–20 all belong
+   to `acme` (it is seeded first, with 30,000 of the 50,000 notes). A 404 skips
+   the tags query, so those requests cost one query, not two.
+
+   Two consequences. It is incidental proof that **cross-tenant isolation
+   works** — globex cannot read acme's rows. And it is a warning for task 31:
+   a load generator that picks ids without regard to tenant produces mostly
+   404s, never triggers the N+1, and would have measured nothing at all.
+
+**Tooling note.** The formatter for these API responses lives in
+[`docker/promfmt.py`](docker/promfmt.py) rather than in `python3 -c '…'`. Inside
+a single-quoted shell string every double quote in the Python needs a
+backslash, and `\"` inside an f-string expression is a `SyntaxError`. Eight of
+my nine inline formatters died that way in the first run while the data behind
+them was perfectly fine — a reminder that a broken *reporter* looks exactly
+like a broken *system*.
+
+Also worth recording: `nslookup app` inside the Prometheus container answers
+`Can't find app: No answer` **while scraping that exact name works**. busybox's
+resolver behaves oddly against Docker's 127.0.0.11. Same trap as B2 task 28b —
+never let a quirky applet stand in as proof of absence.
 
 ### Task 31 — Load
 
