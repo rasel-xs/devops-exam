@@ -983,14 +983,112 @@ never let a quirky applet stand in as proof of absence.
 
 ### Task 31 — Load
 
-[`app/loadtest.sh`](app/loadtest.sh) — 5 minutes, all endpoints, 5 tenants, with:
+[`app/loadtest.sh`](app/loadtest.sh) — 5 minutes, every endpoint, 5 tenants,
+with a **30-second burst** at the halfway mark (20 extra concurrent workers) for
+the saturation panel, and **acme as the deliberately bad tenant**. Evidence:
+`evidence/b3-task31-load.txt`.
 
-- a **30-second burst** at the halfway mark (20 extra concurrent workers), for
-  the saturation panel;
-- **acme as the deliberately bad tenant**, sending `?limit=5000` while everyone
-  else sends `?limit=20`.
+**Final run:**
 
-Summary output: `evidence/b3-loadtest-summary.png`.
+```
+6215 requests over 300s        status 200: 6280      status 499: 75      404: 0
+
+mean DB queries per request        rows returned per query
+  /api/notes        36.47            notes_list      mean   239.7 over  1,263 calls
+  /api/notes/:id     2.00            tags_for_note   mean     2.9 over 99,884 calls
+  /api/search        1.00            search_notes    mean     1.1 over  1,243 calls
+  /api/stats         1.00            note_by_id      mean     1.0 over  1,243 calls
+  /healthz           0.00
+```
+
+`notes_list` 1,263 calls against `tags_for_note` 99,884 is the N+1 in one line:
+a **79× amplification** on the read path.
+
+The first version of this run was wrong in four separate ways, and none of them
+announced themselves. All four were found by making the numbers reconcile.
+
+**1. Ids were derived from `min`/`max` per tenant.** That printed
+`acme 1..50003`. acme really owns 1..30000; 30001..50000 belong to the other
+four tenants and 50001..50003 are the three marker notes B2 task 27 inserted.
+`min`/`max` describes a *range* only if the ids are contiguous, and task 27
+destroyed that. Ids are now **sampled** — 100 real ids per tenant via
+`JOIN LATERAL (SELECT id … ORDER BY random() LIMIT 100)` — which cannot be
+wrong however the ids are laid out. 404s went from 25 to **0**, and
+`/api/notes/:id` moved from a mean of 1.98 queries to exactly **2.00**, because
+every request now finds its note and runs the tags query.
+
+**2. `$RANDOM` maxes out at 32767.** `RANDOM % 50003` can never exceed 32767,
+so ids above that were unreachable and ids 30001–32767 (another tenant's) were
+being requested — the exact 25 404s observed. Silent truncation; sampling
+sidesteps it entirely.
+
+**3. The search term was `abc`.** Seeded bodies are concatenated md5, so a
+3-hex fragment matches thousands of rows, `LIMIT 50` fills within the first
+couple of thousand rows scanned, and Postgres **stops** — hiding the sequential
+scan that deliberate problem 2 is about. A random **5-hex** fragment matches
+almost nothing, so the scan runs to the end. The slow path is the honest one.
+
+**4. The pathological request was sent every time, and had to be throttled to a
+tail.** The tag loop is `for … await`, strictly sequential, so `?limit=5000` is
+5001 round trips holding a pool connection for minutes. Sent once a second it
+would keep the app saturated for the whole five minutes: everything times out,
+the burst disappears, and every panel shows the same flat wall. It is now one
+in five of acme's list requests, which puts a clear 5000 tail in
+`db_rows_returned` and a visibly worse p95 on acme, while the burst still
+stands out. Pathology shows up in production as a tail, not as a distribution.
+
+**What the load run then exposed in the instrumentation itself.** Two counts
+that should have been equal were not: `notes_list` ran **1218** times while
+`http_requests_total{route="/api/notes"}` counted **1158**. Sixty requests did
+work and left no trace. Three bugs, in one middleware block:
+
+- **`res.on('finish')` never fires for a client-aborted request.** Every
+  `?limit=5000` and burst request was cut off by curl's `--max-time 30`, so the
+  slowest requests in the system — the only ones anyone cares about — were
+  recorded in neither `http_requests_total` nor `db_queries_per_request`. It is
+  survivorship bias built into the monitoring: the dashboard silently drops the
+  requests that are going wrong. Now `res.on('close')`, which fires in both
+  cases, with **status 499** (nginx's "client closed request") when
+  `res.writableEnded` is false. Leaving them as 200 would be worse than not
+  counting them.
+- **`in_flight` leaked.** It was incremented unconditionally and decremented
+  only on `finish`, so every aborted request left the gauge one higher forever.
+  Measured directly after the run: **63**, with the true value 0. The saturation
+  panel would have drifted upwards all day and never come back.
+- **The `AsyncLocalStorage` store was read inside the listener.** Moving to
+  `close` broke the query count in exactly the case being fixed:
+  `getStore()` returned `undefined`. `finish` is emitted from inside
+  `res.end()`, still in the request's async context; `close` after an abort is
+  emitted from the **socket** teardown, a different context. The store is now
+  captured synchronously in the middleware and held in the closure — `ctx` is a
+  plain object that `db.query()` mutates, so the reference is enough.
+
+Verified one at a time: a completed request and an aborted one, with the
+aborted one appearing as `status="499"`, the query count recorded, and
+`in_flight` returning to 0.
+
+**A limit that remains, quantified.** For an aborted request
+`db_queries_per_request` records the count **at the moment of the abort**, not
+the work the server goes on to do. In the final run `/api/notes` recorded
+1,263 × 36.47 ≈ **46,000 queries**, while the per-query metrics show
+98,641 `tags_for_note` + 1,263 `notes_list` ≈ **99,900** actually executed. The
+per-request metric therefore sees about **46%** of the real database load. Both
+kinds of metric are needed: per-request for user experience, per-query for what
+the database is actually being asked to do.
+
+**And the underlying reason the server keeps going:** hanging up on an HTTP
+request does not cancel it. A `curl --max-time 3` against `?limit=5000` left
+the app running its remaining queries for another 40 seconds, for a response
+nobody would read. The real fix is to abort the work on `res.on('close')`;
+noted in INCOMPLETE.md rather than claimed.
+
+**Measured while diagnosing this, and it sets up task 34.** A single
+`tags_for_note` takes roughly **40 ms**, because `tags.note_id` has no index
+(deliberate problem 3) and each lookup sequentially scans all 150,000 tag rows.
+That multiplies with the N+1: 21 queries × 40 ms ≈ **0.833 s**, which is
+exactly the p95 measured for `/api/notes` in task 30. `?limit=2000` did not
+finish inside a 120-second timeout. The two deliberate problems are not
+additive, they are multiplicative — N queries, each a full table scan.
 
 ### Task 32 — The dashboard
 

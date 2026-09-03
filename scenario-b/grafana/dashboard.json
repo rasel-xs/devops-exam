@@ -528,7 +528,7 @@
       "id": 8,
       "type": "timeseries",
       "title": "H \u2014 Error rate and p95 latency by tenant",
-      "description": "The multi-tenant view: the same service can be healthy for four tenants and unusable for the fifth. Whether that is data volume or request shape is answered in ANSWERS.md \u2014 and the two are separable because acme has both more rows AND heavier requests, deliberately.",
+      "description": "The multi-tenant view: the same service can be healthy for four tenants and unusable for the fifth. Whether that is data volume or request shape is answered in ANSWERS.md \u2014 and the two are separable because acme has both more rows AND heavier requests, deliberately.  Error rate counts 499 as well as 5xx: 499 is what the app records when the CLIENT hung up before the response was written (B3 task 31). Those are real failures for the user and they are the slowest requests in the system, so excluding them would hide the worst of what a tenant experiences.",
       "datasource": {
         "type": "prometheus",
         "uid": "PROM_EXAM"
@@ -559,7 +559,7 @@
             "uid": "PROM_EXAM"
           },
           "editorMode": "code",
-          "expr": "sum by (tenant) (rate(http_requests_total{status=~\"5..\"}[$__rate_interval])) / sum by (tenant) (rate(http_requests_total[$__rate_interval]))",
+          "expr": "sum by (tenant) (rate(http_requests_total{status=~\"5..|499\"}[$__rate_interval])) / sum by (tenant) (rate(http_requests_total[$__rate_interval]))",
           "legendFormat": "error rate {{tenant}}",
           "refId": "B",
           "range": true,

@@ -58,6 +58,25 @@ been executed on the VPS and has a transcript in `scenario-a/evidence/`.
 5. **Multi-arch builds double CI time.** If Actions minutes become a constraint,
    drop `linux/arm64` and say so in ANSWERS rather than letting builds time out.
 
+### Known limits I chose not to fix
+
+6. **An aborted HTTP request is not cancelled server-side.** B3 task 31: a
+   `curl --max-time 3` against `?limit=5000` left the app running its remaining
+   sequential queries for a further ~40 seconds, producing a response nobody
+   would read. Instrumentation now *records* those requests (status 499), but
+   the work itself is not stopped. The fix is to abort on `res.on('close')` —
+   an `AbortController` threaded through `db.query()`, or checking a
+   per-request cancelled flag inside the tag loop. Left undone because it
+   changes request handling rather than measurement, and measurement is what
+   B3 is marked on.
+
+7. **`db_queries_per_request` undercounts aborted requests.** It observes at
+   the moment of the abort, so the final run recorded ~46,000 of the ~99,900
+   queries actually executed for `/api/notes` — about 46%. The per-query
+   metrics (`db_rows_returned`, `db_query_duration_seconds`) show the true
+   figure, so nothing is unmeasurable; the per-request histogram simply must
+   not be read as "database load". Fixing it properly requires (6).
+
 ### Bonus marks — AI_PROMPTS.md
 
 Only **1 of the minimum 8** entries is written. The remaining seven must be
