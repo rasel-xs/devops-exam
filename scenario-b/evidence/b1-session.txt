@@ -1,0 +1,220 @@
+Script started on 2026-09-03 19:34:43+02:00 [COMMAND="bash docker/b1-tests.sh" TERM="xterm-256color" TTY="/dev/pts/4" COLUMNS="80" LINES="24"]
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427
+date      : Thu Sep  3 19:34:43 CEST 2026
+
+============ SETUP: build both images from the current Dockerfiles ============
+  built abdur/notes-api:multi and abdur/notes-api:naive
+
+============ TASK 21a: the final image does NOT run as root ============
+$ docker run --rm abdur/notes-api:multi whoami  -> node
+$ docker run --rm abdur/notes-api:multi id      -> uid=1000(node) gid=1000(node) groups=1000(node),1000(node)
+
+============ TASK 21b: no build tools or dev dependencies survived ============
+  absent  (good): gcc
+  absent  (good): g++
+  absent  (good): make
+  absent  (good): python3
+  absent  (good): npm
+  absent  (good): npx
+  absent  (good): yarn
+  absent  (good): git
+  absent  (good): curl
+  absent  (good): vim
+  PRESENT (bad): apk
+
+  for contrast, the naive image:
+    PRESENT: gcc
+    PRESENT: make
+    PRESENT: python3
+    PRESENT: git
+
+============ TASK 21c: the HEALTHCHECK actually works ============
+waiting for the healthcheck to report...
+  healthy after 6s
+NAMES      STATUS
+abdur-hc   Up 6 seconds (healthy)
+
+[1;39m{
+  [0m[1;34m"Status"[0m[1;39m: [0m[0;32m"healthy"[0m[1;39m,
+  [0m[1;34m"FailingStreak"[0m[1;39m: [0m[0;39m0[0m[1;39m,
+  [0m[1;34m"Log"[0m[1;39m: [0m[1;39m[
+    [1;39m{
+      [0m[1;34m"Start"[0m[1;39m: [0m[0;32m"2026-09-03T19:35:24.739827908+02:00"[0m[1;39m,
+      [0m[1;34m"End"[0m[1;39m: [0m[0;32m"2026-09-03T19:35:24.872607255+02:00"[0m[1;39m,
+      [0m[1;34m"ExitCode"[0m[1;39m: [0m[0;39m0[0m[1;39m,
+      [0m[1;34m"Output"[0m[1;39m: [0m[0;32m""[0m[1;39m
+    [1;39m}[0m[1;39m
+  [1;39m][0m[1;39m
+[1;39m}[0m
+
+============ TASK 22: size comparison ============
+REPOSITORY:TAG            SIZE
+abdur/notes-api:multi     207MB
+abdur/notes-api:naive     1.66GB
+
+  NOTE: 'docker images' and 'image inspect .Size' disagree on this box.
+  docker images reports the uncompressed on-disk size of every platform
+  in the manifest list; inspect .Size reports the packed size of one
+  platform. Both are printed below -- the ratio is what matters and the
+  two agree on it.
+  naive       : 399 MB
+  multi-stage : 48 MB
+  reduction   : 87.9%  (brief requires >= 60%)
+
+============ TASK 23a: cold build (--no-cache) ============
+#1 [internal] load build definition from Dockerfile
+#10 [deps 1/4] FROM docker.io/library/node:20-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5
+#11 [runtime 3/7] RUN rm -rf /usr/local/lib/node_modules/npm            /usr/local/bin/npm /usr/local/bin/npx            /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+#12 [deps 2/4] WORKDIR /build
+#13 [deps 3/4] COPY package.json package-lock.json* ./
+#14 [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#15 [runtime 4/7] COPY --from=deps --chown=node:node /build/node_modules ./node_modules
+#16 [runtime 5/7] COPY --chown=node:node package.json ./
+#17 [runtime 6/7] COPY --chown=node:node src ./src
+#18 [runtime 7/7] COPY --chown=node:node db ./db
+#4 [internal] load metadata for docker.io/library/node:20-bookworm
+#5 [internal] load metadata for docker.io/library/node:20-alpine
+#6 [internal] load .dockerignore
+#7 [internal] load build context
+#8 [runtime 1/7] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#9 [runtime 2/7] WORKDIR /app
+
+real	0m16.243s
+user	0m0.404s
+sys	0m2.032s
+
+============ TASK 23b: rebuild with NO source change -- every layer should be CACHED ============
+#1 [internal] load build definition from Dockerfile
+#10 CACHED
+#10 [deps 2/4] WORKDIR /build
+#11 CACHED
+#11 [runtime 3/7] RUN rm -rf /usr/local/lib/node_modules/npm            /usr/local/bin/npm /usr/local/bin/npx            /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+#12 CACHED
+#12 [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#13 CACHED
+#13 [runtime 4/7] COPY --from=deps --chown=node:node /build/node_modules ./node_modules
+#14 CACHED
+#14 [runtime 6/7] COPY --chown=node:node src ./src
+#15 CACHED
+#15 [runtime 2/7] WORKDIR /app
+#16 CACHED
+#16 [deps 3/4] COPY package.json package-lock.json* ./
+#17 CACHED
+#17 [runtime 5/7] COPY --chown=node:node package.json ./
+#18 CACHED
+#18 [runtime 7/7] COPY --chown=node:node db ./db
+#3 CACHED
+
+real	0m2.864s
+user	0m0.219s
+sys	0m0.995s
+
+============ TASK 23c: change ONE line of source, then rebuild ============
+appended a comment to app/src/server.js
+
+#1 [internal] load build definition from Dockerfile
+#10 CACHED
+#10 [runtime 2/7] WORKDIR /app
+#11 CACHED
+#11 [deps 3/4] COPY package.json package-lock.json* ./
+#12 CACHED
+#12 [runtime 3/7] RUN rm -rf /usr/local/lib/node_modules/npm            /usr/local/bin/npm /usr/local/bin/npx            /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+#13 CACHED
+#13 [deps 2/4] WORKDIR /build
+#14 CACHED
+#14 [runtime 4/7] COPY --from=deps --chown=node:node /build/node_modules ./node_modules
+#15 CACHED
+#15 [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#16 CACHED
+#16 [runtime 5/7] COPY --chown=node:node package.json ./
+#17 [runtime 6/7] COPY --chown=node:node src ./src
+#18 [runtime 7/7] COPY --chown=node:node db ./db
+#3 CACHED
+#4 [internal] load metadata for docker.io/library/node:20-bookworm
+#5 [internal] load metadata for docker.io/library/node:20-alpine
+
+real	0m3.619s
+user	0m0.222s
+sys	0m0.644s
+(comment removed again)
+
+READ IT LIKE THIS: the npm ci layer stays CACHED because package.json did
+not change, and the cache miss starts at COPY src -- every layer from
+there down is rebuilt, because Docker's cache is a chain.
+
+============ TASK 24: which layer is biggest ============
+IMAGE          CREATED             CREATED BY                                      SIZE      COMMENT
+7cf66a938b03   1 second ago        CMD ["node" "src/server.js"]                    0B        buildkit.dockerfile.v0
+<missing>      1 second ago        HEALTHCHECK {Test:[CMD-SHELL wget --quiet --…   0B        buildkit.dockerfile.v0
+<missing>      1 second ago        EXPOSE [3000/tcp]                               0B        buildkit.dockerfile.v0
+<missing>      1 second ago        USER node                                       0B        buildkit.dockerfile.v0
+<missing>      1 second ago        COPY --chown=node:node db ./db # buildkit       24.6kB    buildkit.dockerfile.v0
+<missing>      1 second ago        COPY --chown=node:node src ./src # buildkit     32.8kB    buildkit.dockerfile.v0
+<missing>      9 seconds ago       COPY --chown=node:node package.json ./ # bui…   12.3kB    buildkit.dockerfile.v0
+<missing>      10 seconds ago      COPY --chown=node:node /build/node_modules .…   11.3MB    buildkit.dockerfile.v0
+<missing>      18 seconds ago      RUN /bin/sh -c rm -rf /usr/local/lib/node_mo…   28.7kB    buildkit.dockerfile.v0
+<missing>      About an hour ago   WORKDIR /app                                    8.19kB    buildkit.dockerfile.v0
+<missing>      About an hour ago   ENV NODE_ENV=production PORT=3000 APP_VERSIO…   0B        buildkit.dockerfile.v0
+<missing>      4 months ago        CMD ["node"]                                    0B        buildkit.dockerfile.v0
+<missing>      4 months ago        ENTRYPOINT ["docker-entrypoint.sh"]             0B        buildkit.dockerfile.v0
+<missing>      4 months ago        COPY docker-entrypoint.sh /usr/local/bin/ # …   20.5kB    buildkit.dockerfile.v0
+<missing>      4 months ago        RUN /bin/sh -c apk add --no-cache --virtual …   5.48MB    buildkit.dockerfile.v0
+<missing>      4 months ago        ENV YARN_VERSION=1.22.22                        0B        buildkit.dockerfile.v0
+<missing>      4 months ago        RUN /bin/sh -c addgroup -g 1000 node     && …   130MB     buildkit.dockerfile.v0
+<missing>      4 months ago        ENV NODE_VERSION=20.20.2                        0B        buildkit.dockerfile.v0
+<missing>      4 months ago        CMD ["/bin/sh"]                                 0B        buildkit.dockerfile.v0
+<missing>      4 months ago        ADD alpine-minirootfs-3.23.4-x86_64.tar.gz /…   9.11MB    buildkit.dockerfile.v0
+
+--- sorted by size, with the command that created each ---
+130MB	RUN /bin/sh -c addgroup -g 1000 node     && adduser -u 1000 -G node -s /bin/sh -D node     && apk add --no-cache         libstdc++     && apk add --no-cac
+11.3MB	COPY --chown=node:node /build/node_modules ./node_modules # buildkit
+9.11MB	ADD alpine-minirootfs-3.23.4-x86_64.tar.gz / # buildkit
+5.48MB	RUN /bin/sh -c apk add --no-cache --virtual .build-deps-yarn curl gnupg tar   && export GNUPGHOME="$(mktemp -d)"   && for key in     6A010C5166006599AA17
+32.8kB	COPY --chown=node:node src ./src # buildkit
+28.7kB	RUN /bin/sh -c rm -rf /usr/local/lib/node_modules/npm            /usr/local/bin/npm /usr/local/bin/npx            /opt/yarn-v* /usr/local/bin/yarn /usr/l
+
+============ TASK 25: prove there are no secrets in the image ============
+--- is a .env present in the running filesystem? ---
+ls: /app/.env: No such file or directory
+  no /app/.env
+
+--- does any ENV or layer command mention a secret? ---
+["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","NODE_VERSION=20.20.2","YARN_VERSION=1.22.22","NODE_ENV=production","PORT=3000","APP_VERSION=v1"]
+  nothing in the layer commands
+
+--- unpack EVERY layer and search inside it ---
+
+>>> NEGATIVE CONTROL: an image that deliberately leaks.
+    Dockerfile.leaky writes a secret, then deletes it in a later layer --
+    exactly the trap in the brief. If the scan cannot find it HERE, the
+    scan is broken and 'nothing found' in my real image means nothing.
+    (the file is NOT in the running container:)
+ls: /app/.env: No such file or directory
+      no /app/.env -- looks clean
+    (but the bytes are still in an earlier layer:)
+  layers extracted : 4
+  MATCHES (each needs triage -- a match is not automatically a leak):
+    l3/app/.env
+        > DB_PASSWORD=hunter2-LEAKED-MARKER-9f3a
+
+>>> THE REAL IMAGE, scanned exactly the same way:
+  layers extracted : 10
+  MATCHES (each needs triage -- a match is not automatically a leak):
+    l7/opt/yarn-v1.22.22/lib/cli.js
+        >     secretAccessKey: env.AWS_SECRET_ACCESS_KEY || env.AWS_SECRET_KEY,
+    l6/usr/local/lib/node_modules/npm/man/man7/config.7
+        > key="-----BEGIN PRIVATE KEY-----\[rs]nXXXX\[rs]nXXXX\[rs]n-----END PRIVATE KEY-----"
+    l6/usr/local/lib/node_modules/npm/node_modules/@npmcli/config/lib/definitions/definitions.js
+        >       key="-----BEGIN PRIVATE KEY-----\\nXXXX\\nXXXX\\n-----END PRIVATE KEY-----"
+    l6/usr/local/lib/node_modules/npm/docs/content/using-npm/config.md
+        > key="-----BEGIN PRIVATE KEY-----\nXXXX\nXXXX\n-----END PRIVATE KEY-----"
+    l6/usr/local/lib/node_modules/npm/docs/output/using-npm/config.html
+        > <pre><code class="language-ini">key="-----BEGIN PRIVATE KEY-----\nXXXX\nXXXX\n-----END PRIVATE KEY-----"
+
+--- and .dockerignore is why: the file never enters the build context ---
+7:.env
+8:.env.*
+
+============ END ============
+
+Script done on 2026-09-03 19:36:06+02:00 [COMMAND_EXIT_CODE="0"]

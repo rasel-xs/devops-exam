@@ -40,10 +40,19 @@ restore() {
 
 # The physical alternative, for reference. Postgres must be STOPPED first or
 # the tarball is a torn copy that may not start.
+#
+# The volume name is DERIVED, not hardcoded. Compose prefixes volume names with
+# the project name, so the volume declared as `pgdata` is really
+# `abdur-notes_pgdata`. An earlier version of this script had `docker_pgdata`
+# hardcoded from a different project and would have silently tarred nothing.
 backup_volume() {
+  local cid vol
+  cid=$($COMPOSE ps -q postgres)
+  vol=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$cid")
+  [ -n "$vol" ] || { echo "could not resolve the pgdata volume" >&2; return 1; }
+  echo "volume = $vol"
   $COMPOSE stop postgres
-  docker run --rm -v "$( $COMPOSE ps -q postgres >/dev/null; echo docker_pgdata )":/data \
-    -v "$(cd "$OUT_DIR" && pwd)":/backup alpine \
+  docker run --rm -v "$vol":/data -v "$(cd "$OUT_DIR" && pwd)":/backup alpine \
     tar czf "/backup/pgdata-$(date +%Y%m%d-%H%M%S).tar.gz" -C /data .
   $COMPOSE start postgres
 }
