@@ -12,6 +12,14 @@ hr() { printf '\n============ %s ============\n' "$*"; }
 echo "EXAM_TOKEN: ${EXAM_TOKEN:-NOT SET}"
 echo "date      : $(date)"
 
+# Build first. My first run tested the image left over from an earlier build,
+# so task 21b reported npm as present when the current Dockerfile had already
+# removed it. Tests must run against what the Dockerfile produces NOW.
+hr "SETUP: build both images from the current Dockerfiles"
+docker build -q -f docker/Dockerfile.naive -t "$NAIVE" app/ >/dev/null
+docker build -q -f docker/Dockerfile       -t "$IMG"   app/ >/dev/null
+echo "  built $IMG and $NAIVE"
+
 # ------------------------------------------------------------- task 21 ------
 hr "TASK 21a: the final image does NOT run as root"
 echo -n '$ docker run --rm '"$IMG"' whoami  -> '
@@ -140,16 +148,21 @@ scan_image() {
   done
   echo "  layers extracted : $n"
 
+  # Print the MATCHING LINE for each hit, not just the filename. Without it a
+  # hit cannot be triaged, and this scan does produce false positives: npm and
+  # yarn ship documentation containing example keys.
   local hits
   hits=$(grep -ral -E 'hunter2|LEAKED-MARKER|BEGIN [A-Z ]*PRIVATE KEY|AWS_SECRET_ACCESS_KEY' \
-         "$tmp/layers" 2>/dev/null | head -5)
+         "$tmp/layers" 2>/dev/null | head -8)
   if [ -n "$hits" ]; then
-    echo "  SECRET FOUND in:"
-    printf '%s\n' "$hits" | sed "s|$tmp/layers/|    |"
-    echo "  content:"
-    grep -rah -E 'hunter2|LEAKED-MARKER' "$tmp/layers" 2>/dev/null | head -2 | sed 's/^/    /'
+    echo "  MATCHES (each needs triage -- a match is not automatically a leak):"
+    while IFS= read -r f; do
+      printf '    %s\n' "${f#$tmp/layers/}"
+      grep -ahm1 -E 'hunter2|LEAKED-MARKER|BEGIN [A-Z ]*PRIVATE KEY|AWS_SECRET_ACCESS_KEY' \
+        "$f" 2>/dev/null | cut -c1-110 | sed 's/^/        > /'
+    done <<< "$hits"
   else
-    echo "  no secrets found in any extracted layer"
+    echo "  no matches in any extracted layer"
   fi
   rm -rf "$tmp"
 }
