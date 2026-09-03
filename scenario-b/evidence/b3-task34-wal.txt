@@ -1,0 +1,20 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 23:11:12 CEST 2026
+
+=== with index ===
+   Buffers: shared hit=50508 read=3 dirtied=104 written=73
+   WAL: records=30462 fpi=3 bytes=2096852
+         Buffers: shared hit=10012 dirtied=1
+         WAL: records=304 bytes=30096
+   Buffers: shared hit=6
+ Execution Time: 367.497 ms
+
+=== without index ===
+   Buffers: shared hit=30481 dirtied=64 written=64
+   WAL: records=20357 bytes=1421894
+         Buffers: shared hit=10012
+         WAL: records=303 bytes=29997
+   Buffers: shared hit=6
+ Execution Time: 371.132 ms
+
+restoring the index -- it IS the task 34 fix
+    "idx_tags_note_id" btree (note_id)

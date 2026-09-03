@@ -1,0 +1,136 @@
+
+############ TASK 34  fix the missing index on tags.note_id ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 22:27:38 CEST 2026
+
+--- state before: what indexes exist on tags? ---
+                             Table "public.tags"
+ Column  |  Type   | Collation | Nullable |             Default              
+---------+---------+-----------+----------+----------------------------------
+ id      | integer |           | not null | nextval('tags_id_seq'::regclass)
+ note_id | integer |           | not null | 
+ name    | text    |           | not null | 
+Indexes:
+    "tags_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "tags_note_id_fkey" FOREIGN KEY (note_id) REFERENCES notes(id)
+
+
+--- BEFORE 1/3 -- the query plan ---
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Seq Scan on tags  (cost=0.00..2739.04 rows=4 width=6) (actual time=0.080..19.077 rows=6 loops=1)
+   Filter: (note_id = 12345)
+   Rows Removed by Filter: 149997
+   Buffers: shared hit=864
+ Planning:
+   Buffers: shared hit=63
+ Planning Time: 2.768 ms
+ Execution Time: 19.135 ms
+(8 rows)
+
+
+--- BEFORE 2/3 -- 100 lookups ---
+Timing is on.
+ sum 
+-----
+ 283
+(1 row)
+
+Time: 2474.886 ms (00:02.475)
+
+--- BEFORE 3/3 -- HTTP: GET /api/notes?limit=20 (21 queries per request) ---
+  mean 2.255 s over 5 requests
+
+--- BEFORE -- write cost: INSERT 10,000 tags ---
+Timing is on.
+INSERT 0 10000
+Time: 731.645 ms
+
+--- sizes before ---
+tags heap: 7232 kB
+tags total (heap+indexes): 11 MB
+
+--- THE FIX ---
+Timing is on.
+CREATE INDEX
+Time: 2634.935 ms (00:02.635)
+Timing is on.
+ANALYZE
+Time: 56.190 ms
+                             Table "public.tags"
+ Column  |  Type   | Collation | Nullable |             Default              
+---------+---------+-----------+----------+----------------------------------
+ id      | integer |           | not null | nextval('tags_id_seq'::regclass)
+ note_id | integer |           | not null | 
+ name    | text    |           | not null | 
+Indexes:
+    "tags_pkey" PRIMARY KEY, btree (id)
+    "idx_tags_note_id" btree (note_id)
+Foreign-key constraints:
+    "tags_note_id_fkey" FOREIGN KEY (note_id) REFERENCES notes(id)
+
+
+--- AFTER 1/3 -- the query plan ---
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on tags  (cost=4.33..19.58 rows=4 width=6) (actual time=0.067..0.113 rows=6 loops=1)
+   Recheck Cond: (note_id = 12345)
+   Heap Blocks: exact=6
+   Buffers: shared hit=7 read=1
+   ->  Bitmap Index Scan on idx_tags_note_id  (cost=0.00..4.33 rows=4 width=0) (actual time=0.053..0.053 rows=6 loops=1)
+         Index Cond: (note_id = 12345)
+         Buffers: shared hit=1 read=1
+ Planning:
+   Buffers: shared hit=79
+ Planning Time: 1.702 ms
+ Execution Time: 0.211 ms
+(11 rows)
+
+
+--- AFTER 2/3 -- the same 100 lookups ---
+Timing is on.
+ sum 
+-----
+ 283
+(1 row)
+
+Time: 25.000 ms
+
+--- AFTER 3/3 -- HTTP: the same endpoint ---
+  mean 0.283 s over 5 requests
+
+--- AFTER -- write cost: the same INSERT, now maintaining a b-tree too ---
+Timing is on.
+INSERT 0 10000
+Time: 464.733 ms
+
+--- what the fix cost on disk ---
+index: 2216 kB
+tags heap: 7744 kB
+tags total: 13 MB
+
+--- the heavy case: ?limit=2000 used to exceed a 120s timeout ---
+  mean 16.060 s over 1 requests
+
+--- restart the app to drop a deploy annotation on the dashboard ---
+ Container abdur-notes-app-1 Restarting 
+ Container abdur-notes-app-1 Started 
+
+--- 60s of load AFTER the fix, for the before/after panels ---
+  notes_list           mean      157.7 rows over 390 calls
+  tags_for_note        mean        2.9 rows over 61730 calls
+  tenant_lookup        mean        1.0 rows over 10 calls
+  note_by_id           mean        1.0 rows over 230 calls
+  stats_join           mean        1.0 rows over 390 calls
+  search_notes         mean        0.8 rows over 230 calls
+
+=== requests per route ===
+  /api/stats                  390
+  /api/notes                  390
+  /healthz                    237
+  /api/notes/:id              230
+  /api/search                 230
+  /metrics                     14
+
+############ task 34 complete ############
+To reproduce the BEFORE state:  DROP INDEX idx_tags_note_id;

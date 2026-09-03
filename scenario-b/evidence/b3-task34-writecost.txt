@@ -1,0 +1,28 @@
+
+############ TASK 34 follow-up  the real write cost of idx_tags_note_id ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 22:35:14 CEST 2026
+  alternating conditions, VACUUM before each run
+
+round 1
+  with index        345.177 ms
+  without index     538.645 ms
+round 2
+  with index        445.290 ms
+  without index     383.001 ms
+round 3
+  with index        388.038 ms
+  without index     930.679 ms
+
+restoring the index (it is the task 34 fix)
+Indexes:
+    "tags_pkey" PRIMARY KEY, btree (id)
+    "idx_tags_note_id" btree (note_id)
+Foreign-key constraints:
+
+and the read side, one more time, to confirm the index is back:
+ Bitmap Heap Scan on tags  (cost=4.33..19.58 rows=4 width=6) (actual time=0.072..0.128 rows=6 loops=1)
+   Buffers: shared hit=6 read=2
+   ->  Bitmap Index Scan on idx_tags_note_id  (cost=0.00..4.33 rows=4 width=0) (actual time=0.057..0.057 rows=6 loops=1)
+         Buffers: shared read=2
+   Buffers: shared hit=78 read=1
+ Execution Time: 0.379 ms

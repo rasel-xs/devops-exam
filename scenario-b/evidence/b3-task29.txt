@@ -1,0 +1,106 @@
+
+############ TASK 29  application metrics ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:50:42 CEST 2026
+  app ready
+
+--- generate traffic across every route, with MANY DIFFERENT note ids ---
+  done
+
+--- all six metrics present, with their TYPE and HELP ---
+  http_requests_total              # TYPE http_requests_total counter
+  http_request_duration_seconds    # TYPE http_request_duration_seconds histogram
+  db_query_duration_seconds        # TYPE db_query_duration_seconds histogram
+  db_queries_per_request           # TYPE db_queries_per_request histogram
+  db_rows_returned                 # TYPE db_rows_returned histogram
+  http_requests_in_flight          # TYPE http_requests_in_flight gauge
+
+--- every distinct value of the route label ---
+  route="/api/notes"
+  route="/api/notes/:id"
+  route="/api/search"
+  route="/api/stats"
+  route="/healthz"
+  route="/metrics"
+  route="/readyz"
+  route="unmatched"
+
+--- CARDINALITY CHECK -- a route label containing a bare number is a bug ---
+  PASS -- 30 different note ids produced ONE series, not 30
+
+--- total number of series exposed (the number that has to stay small) ---
+  662
+
+--- THE N+1, visible in db_queries_per_request ---
+  cumulative bucket counts for GET /api/notes (le = 'less than or equal'):
+    db_queries_per_request_bucket{le="1",app="notes-api",route="/api/notes"} 0
+    db_queries_per_request_bucket{le="2",app="notes-api",route="/api/notes"} 0
+    db_queries_per_request_bucket{le="3",app="notes-api",route="/api/notes"} 0
+    db_queries_per_request_bucket{le="5",app="notes-api",route="/api/notes"} 0
+    db_queries_per_request_bucket{le="8",app="notes-api",route="/api/notes"} 0
+    db_queries_per_request_bucket{le="13",app="notes-api",route="/api/notes"} 0
+    db_queries_per_request_bucket{le="21",app="notes-api",route="/api/notes"} 1
+    db_queries_per_request_bucket{le="34",app="notes-api",route="/api/notes"} 3
+    db_queries_per_request_bucket{le="55",app="notes-api",route="/api/notes"} 3
+    db_queries_per_request_bucket{le="100",app="notes-api",route="/api/notes"} 3
+    db_queries_per_request_bucket{le="250",app="notes-api",route="/api/notes"} 3
+    db_queries_per_request_bucket{le="1000",app="notes-api",route="/api/notes"} 3
+    db_queries_per_request_bucket{le="+Inf",app="notes-api",route="/api/notes"} 3
+
+  the same histogram for a route with no N+1:
+    db_queries_per_request_bucket{le="1",app="notes-api",route="/api/notes/:id"} 0
+    db_queries_per_request_bucket{le="2",app="notes-api",route="/api/notes/:id"} 29
+    db_queries_per_request_bucket{le="3",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="5",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="8",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="13",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="21",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="34",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="55",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="100",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="250",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="1000",app="notes-api",route="/api/notes/:id"} 30
+    db_queries_per_request_bucket{le="+Inf",app="notes-api",route="/api/notes/:id"} 30
+
+--- sum/count let us read the MEAN queries per request per route ---
+  db_queries_per_request_sum{app="notes-api",route="/healthz"} 0
+  db_queries_per_request_count{app="notes-api",route="/healthz"} 3
+  db_queries_per_request_sum{app="notes-api",route="/readyz"} 1
+  db_queries_per_request_count{app="notes-api",route="/readyz"} 1
+  db_queries_per_request_sum{app="notes-api",route="/api/notes/:id"} 61
+  db_queries_per_request_count{app="notes-api",route="/api/notes/:id"} 30
+  db_queries_per_request_sum{app="notes-api",route="/api/notes"} 65
+  db_queries_per_request_count{app="notes-api",route="/api/notes"} 3
+  db_queries_per_request_sum{app="notes-api",route="/api/search"} 3
+  db_queries_per_request_count{app="notes-api",route="/api/search"} 3
+  db_queries_per_request_sum{app="notes-api",route="/api/stats"} 3
+  db_queries_per_request_count{app="notes-api",route="/api/stats"} 3
+  db_queries_per_request_sum{app="notes-api",route="unmatched"} 0
+  db_queries_per_request_count{app="notes-api",route="unmatched"} 1
+  db_queries_per_request_sum{app="notes-api",route="/metrics"} 0
+  db_queries_per_request_count{app="notes-api",route="/metrics"} 11
+
+--- db_rows_returned -- the unbounded-limit detector, unprovoked so far ---
+  db_rows_returned_sum{app="notes-api",query_name="readyz_ping"} 1
+  db_rows_returned_count{app="notes-api",query_name="readyz_ping"} 1
+  db_rows_returned_sum{app="notes-api",query_name="tenant_lookup"} 3
+  db_rows_returned_count{app="notes-api",query_name="tenant_lookup"} 3
+  db_rows_returned_sum{app="notes-api",query_name="note_by_id"} 30
+  db_rows_returned_count{app="notes-api",query_name="note_by_id"} 30
+  db_rows_returned_sum{app="notes-api",query_name="tags_for_note"} 256
+  db_rows_returned_count{app="notes-api",query_name="tags_for_note"} 90
+  db_rows_returned_sum{app="notes-api",query_name="notes_list"} 60
+  db_rows_returned_count{app="notes-api",query_name="notes_list"} 3
+  db_rows_returned_sum{app="notes-api",query_name="search_notes"} 0
+  db_rows_returned_count{app="notes-api",query_name="search_notes"} 3
+  db_rows_returned_sum{app="notes-api",query_name="stats_join"} 3
+  db_rows_returned_count{app="notes-api",query_name="stats_join"} 3
+
+--- in-flight gauge is a GAUGE (it must be able to go down) ---
+  # TYPE http_requests_in_flight gauge
+  http_requests_in_flight{app="notes-api"} 1
+
+--- free process metrics -- process_start_time_seconds catches crash-loops ---
+  process_start_time_seconds{app="notes-api"} 1788461431
+  nodejs_version_info{version="v20.20.2",major="20",minor="20",patch="2",app="notes-api"} 1
+
+############ task 29 complete ############

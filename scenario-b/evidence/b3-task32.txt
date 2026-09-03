@@ -1,0 +1,141 @@
+
+############ TASK 32  Grafana dashboard ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 21:49:10 CEST 2026
+
+--- grafana health ---
+{
+  "database": "ok",
+  "version": "11.2.0",
+  "commit": "2a88694fd3ced0335bf3726cc5d0adc2d1858855"
+}
+
+--- provisioned datasource ---
+  "id":1,"uid":"PROM_EXAM","orgId":1,"name":"Prometheus","type":"prometheus","typeName":"Prometheus","typeLogoUrl":"public/app/plugins/datasource/prometheus/img/prometheus_logo.svg","access":"proxy","url":"http://prometheus:9090","user":"","database":"","basicAuth":false,"isDefault":true,"jsonData":
+
+--- can grafana actually reach prometheus through it? ---
+  datasource uid = PROM_EXAM
+  {"details":{"application":"Prometheus","features":{"rulerApiEnabled":false}},"message":"Successfully queried the Prometheus API.","status":"OK"}
+
+--- provisioned dashboards ---
+  "id":1,"uid":"notes-api-exam","title":"exam-root-vmi3536696-1788282556-1536d427","uri":"db/exam-root-vmi3536696-1788282556-1536d427","url":"/d/notes-api-exam/exam-root-vmi3536696-1788282556-1536d427","slug":"","type":"dash-db","tags":["exam","notes-api"],"isStarred":false,"sortMeta":0,"isDeleted":false}]
+
+--- generate 90s of load so the panels have something to draw ---
+
+--- every panel query, evaluated against Prometheus ---
+dashboard: exam-root-vmi3536696-1788282556-1536d427   uid=notes-api-exam   panels=9
+substituting $__rate_interval -> 1m (Grafana computes it from the panel width and the 5s scrape interval)
+
+==============================================================================
+A — Top 5 slowest endpoints by p95 latency  [timeseries]
+  -- {{route}}   (datasource uid=PROM_EXAM)
+               10  route=/api/notes
+     0.8262499999999999  route=/api/stats
+     0.47755681818181805  route=/api/notes/:id
+     0.2477734375  route=/api/search
+     0.07249999999999993  route=/metrics
+
+==============================================================================
+B — Total time consumed by endpoint (seconds of work per second)  [timeseries]
+  -- {{route}}   (datasource uid=PROM_EXAM)
+     25.265186831401362  route=/api/notes
+     0.6637131326224242  route=/api/stats
+     0.5795732135461226  route=/api/notes/:id
+     0.3016297751169185  route=/api/search
+     0.003207591414481464  route=/metrics
+
+==============================================================================
+C — DB query duration: mean vs p99 by query  [timeseries]
+  -- mean {{query_name}}   (datasource uid=PROM_EXAM)
+              NaN  query_name=tenant_lookup
+     0.1011605462971018  query_name=note_by_id
+     0.08503634529678497  query_name=tags_for_note
+     0.114187758123187  query_name=notes_list
+     0.11831981105755383  query_name=search_notes
+     0.26153990253956766  query_name=stats_join
+  -- p99 {{query_name}}   (datasource uid=PROM_EXAM)
+     0.6525000000000014  query_name=search_notes
+     0.9652500000000002  query_name=stats_join
+              NaN  query_name=tenant_lookup
+     0.4683333333333326  query_name=note_by_id
+           0.4375  query_name=tags_for_note
+     0.4841666666666663  query_name=notes_list
+
+==============================================================================
+D — Slowest query and how often it runs  [table]
+  -- p99   (datasource uid=PROM_EXAM)
+     0.4841666666666663  query_name=notes_list
+     0.6525000000000014  query_name=search_notes
+     0.9652500000000002  query_name=stats_join
+              NaN  query_name=tenant_lookup
+     0.4683333333333326  query_name=note_by_id
+           0.4375  query_name=tags_for_note
+  -- calls/sec   (datasource uid=PROM_EXAM)
+                0  query_name=tenant_lookup
+     2.511236875147854  query_name=note_by_id
+     373.04605754007974  query_name=tags_for_note
+     2.511236875147854  query_name=notes_list
+     2.5294342438083457  query_name=search_notes
+     2.5294342438083457  query_name=stats_join
+
+==============================================================================
+E — N+1 detector: mean DB queries per request  [timeseries]
+  -- {{route}}   (datasource uid=PROM_EXAM)
+                0  route=/healthz
+                2  route=/api/notes/:id
+     60.828729281767956  route=/api/notes
+                1  route=/api/search
+                1  route=/api/stats
+                0  route=/metrics
+
+==============================================================================
+F — Harmful queries per second (slower than 50ms)  [timeseries]
+  -- {{query_name}} > 50ms   (datasource uid=PROM_EXAM)
+                0  query_name=tenant_lookup
+     1.910723709351628  query_name=note_by_id
+     220.49751605917785  query_name=tags_for_note
+     2.1472895019380203  query_name=notes_list
+     2.110894764617037  query_name=search_notes
+     2.5294342438083457  query_name=stats_join
+
+==============================================================================
+G — Rows returned per query (p50 / p99)  [timeseries]
+  -- p50 {{query_name}}   (datasource uid=PROM_EXAM)
+              NaN  query_name=tenant_lookup
+              0.5  query_name=note_by_id
+     2.618870779176123  query_name=tags_for_note
+     15.267175572519083  query_name=notes_list
+     0.6682692307692307  query_name=search_notes
+              0.5  query_name=stats_join
+  -- p99 {{query_name}}   (datasource uid=PROM_EXAM)
+     0.9899999999999999  query_name=note_by_id
+     9.356963613550816  query_name=tags_for_note
+     4211.428571428567  query_name=notes_list
+     7.6833333333333425  query_name=search_notes
+             0.99  query_name=stats_join
+              NaN  query_name=tenant_lookup
+
+==============================================================================
+H — Error rate and p95 latency by tenant  [timeseries]
+  -- p95 {{tenant}}   (datasource uid=PROM_EXAM)
+     4.569444444444443  tenant=initech
+     4.60576923076923  tenant=umbrella
+     4.308333333333333  tenant=hooli
+     0.0066785714285714295  tenant=none
+               10  tenant=acme
+     4.145833333333334  tenant=globex
+  -- error rate {{tenant}}   (datasource uid=PROM_EXAM)
+     0.22000000000000003  tenant=acme
+
+==============================================================================
+I — Saturation: in-flight requests vs p95 latency  [timeseries]
+  -- in-flight   (datasource uid=PROM_EXAM)
+                2  app=notes-api,instance=app:3000,job=notes-api,service=notes-api
+  -- p95 latency (all routes)   (datasource uid=PROM_EXAM)
+     7.472222222222206  (no labels)
+
+==============================================================================
+every panel target returned data
+
+############ task 32 complete ############
+Now open the dashboard in a browser and screenshot it:
+  http://169.58.246.108:3130   (admin / admin)

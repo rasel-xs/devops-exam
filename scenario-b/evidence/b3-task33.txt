@@ -1,0 +1,121 @@
+
+############ TASK 33  alerting ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 22:14:05 CEST 2026
+
+--- syntax-check the rules with promtool BEFORE loading them ---
+Checking /etc/prometheus/alert.rules.yml
+  SUCCESS: 3 rules found
+
+
+--- reload prometheus without restarting it (--web.enable-lifecycle) ---
+  reloaded
+
+--- rules prometheus has actually loaded ---
+  "data":{"groups":[{"name":"notes-api"
+  "rules":[{"state":"inactive"
+  "name":"HighP95Latency"
+  "duration":120
+  "health":"ok"
+  {"state":"pending"
+  "name":"HighErrorRate"
+  "duration":300
+  "state":"pending"
+  "health":"ok"
+  {"state":"inactive"
+  "name":"AppDown"
+  "duration":60
+  "health":"ok"
+
+--- grafana-managed alert rule, provisioned from grafana/provisioning/alerting/ ---
+  "uid":"abdur-p95-latency"
+  "folderUID":"dfx66ec6mj280b"
+  "title":"HighP95Latency"
+  "for":"2m"
+  "severity":"warning"}
+
+--- current alert state (expected: nothing firing) ---
+  "alertname":"HighErrorRate","route":"/api/notes","severity":"critical"},"annotations":
+  "summary":"/api/notes is failing 0.1 of requests (5xx or client-abort)"},"state":"pending","activeAt":"2026-09-03T20:14:09.735135329Z","value":"8.225108225108226e-02"}]}}
+  (empty = no alert is active)
+
+--- start load and watch the state machine ---
+  load started (pid 881586), sampling every 15s for 5 minutes
+
+  TIME      ALERT                  STATE     VALUE
+22:14:10            HighErrorRate /api/notes pending   8.2251082251
+22:14:25            HighP95Latency /api/notes pending   4.875e+00
+            HighErrorRate /api/notes pending   8.1664098613
+22:14:40            HighP95Latency /api/notes pending   4.875e+00
+            HighErrorRate /api/notes pending   7.9510703363
+22:14:55            HighP95Latency /api/notes pending   4.9060457516
+            HighErrorRate /api/notes pending   7.4515648286
+22:15:11            HighP95Latency /api/notes pending   4.9925742574
+            HighErrorRate /api/notes pending   7.2617246596
+22:15:26            HighP95Latency /api/notes pending   9.5390624999
+22:15:41            HighP95Latency /api/notes pending   9.8559322033
+22:15:56            HighP95Latency /api/notes pending   9.8440594059
+22:16:11            HighP95Latency /api/notes pending   9.7831325301
+22:16:26            HighP95Latency /api/notes firing    9.8294573643
+22:16:41            HighP95Latency /api/notes firing    9.9212962962
+22:16:57            HighP95Latency /api/notes firing    4.4812500000
+            HighErrorRate /api/notes pending   6.3703703703
+22:17:12            HighP95Latency /api/notes firing    4.6965517241
+            HighP95Latency /api/notes/:id pending   1.5166666666
+            HighErrorRate /api/notes pending   6.7658998646
+22:17:27            HighP95Latency /api/notes firing    4.6833333333
+            HighP95Latency /api/notes/:id pending   2.1096590909
+            HighErrorRate /api/notes pending   6.2820512820
+22:17:42            HighP95Latency /api/notes firing    4.5420000000
+            HighP95Latency /api/notes/:id pending   2.2290322580
+            HighP95Latency /api/stats pending   1.6599999999
+            HighErrorRate /api/notes pending   5.9718969555
+22:17:58            HighP95Latency /api/notes/:id pending   2.2445312499
+            HighP95Latency /api/stats pending   1.7214285714
+            HighP95Latency /api/notes firing    1.4992857142
+            HighErrorRate /api/notes pending   6.0043668122
+22:18:13            HighP95Latency /api/notes firing    1.4937500000
+            HighP95Latency /api/notes/:id pending   2.2604838709
+            HighP95Latency /api/stats pending   1.8459999999
+            HighErrorRate /api/notes pending   5.9979317476
+22:18:28            HighP95Latency /api/notes firing    1.6949999999
+            HighP95Latency /api/notes/:id pending   2.0875000000
+            HighP95Latency /api/stats pending   1.7333333333
+            HighErrorRate /api/notes pending   6.0311284046
+22:18:43            HighP95Latency /api/notes firing    2.7000000000
+            HighP95Latency /api/notes/:id pending   2.0949999999
+            HighP95Latency /api/stats pending   1.8999999999
+            HighErrorRate /api/notes pending   6.2135922330
+22:18:58            HighP95Latency /api/notes firing    3.1500000000
+            HighP95Latency /api/notes/:id pending   2.2696428571
+            HighP95Latency /api/stats pending   2.0840909090
+            HighP95Latency /api/search pending   1.7249999999
+            HighErrorRate /api/notes pending   6.2135922330
+
+--- grafana's own view of the same rule ---
+  "data":{"groups":[{"name":"notes-api"
+  "rules":[{"state":"firing"
+  "name":"HighP95Latency"
+  "state":"Alerting"
+  "state":"Normal"
+  "state":"Normal"
+  "state":"Normal"
+  "state":"Normal"
+  "state":"Normal"
+  "health":"ok"
+
+--- let it resolve ---
+  load stopped; sampling for another 3 minutes
+22:19:14  HighP95Latency//api/notes=firing, HighErrorRate//api/notes=pending
+22:19:29  HighP95Latency//api/notes=firing, HighErrorRate//api/notes=pending
+22:19:44  HighErrorRate//api/notes=pending
+22:19:59  HighErrorRate//api/notes=pending
+22:20:14  HighErrorRate//api/notes=pending
+22:20:29  HighErrorRate//api/notes=pending
+22:20:45  HighErrorRate//api/notes=pending
+22:21:00  HighErrorRate//api/notes=pending
+22:21:15  HighErrorRate//api/notes=pending
+22:21:30  HighErrorRate//api/notes=pending
+22:21:45  HighErrorRate//api/notes=pending
+22:22:00  HighErrorRate//api/notes=firing
+
+############ task 33 complete ############

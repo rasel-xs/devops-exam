@@ -1385,6 +1385,25 @@ measurements does not make them meaningful.
 | Buffers | 50,509 | 30,481 | **+20,028** |
 | Execution time | 439 ms | 395 ms | *inside the noise* |
 
+Run a second time (`evidence/b3-task34-wal.txt`), the point makes itself:
+
+| second run | with index | without index |
+| --- | --- | --- |
+| WAL records | 30,462 | 20,357 |
+| WAL bytes | 2,096,852 | 1,421,894 |
+| Execution time | 367 ms | 371 ms |
+
+The `without` figures are **identical to the first run, to the byte**, and the
+`with` record count differs by one. The execution times, meanwhile, came out
+367 ms against 371 ms — this time the timing would have said the index costs
+*nothing at all*. Two runs, two contradictory answers from the clock and the
+same answer twice from the counters.
+
+(`fpi=3` in the second run is full-page images: the first write to a page after
+a checkpoint logs the whole page. It nudges WAL *bytes* around depending on
+where the checkpoint fell, which is why the *record count* is the cleaner
+signal of the two.)
+
 `+10,104` WAL records over 10,000 inserted rows is **one extra WAL record per
 row** — the b-tree insertion — plus about two extra buffer touches each. That
 is the honest cost: roughly 46% more write-ahead log for this table. Real, and

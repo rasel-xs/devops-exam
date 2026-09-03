@@ -1,0 +1,90 @@
+
+############ TASK 30  Prometheus ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 20:58:07 CEST 2026
+
+--- bring the whole stack up (app, postgres, prometheus, grafana) ---
+ Container abdur-notes-prometheus-1 Running 
+ Container abdur-notes-grafana-1 Running 
+ Container abdur-notes-postgres-1 Running 
+ Container abdur-notes-app-1 Running 
+ Container abdur-notes-postgres-1 Waiting 
+ Container abdur-notes-postgres-1 Healthy 
+  prometheus says: Prometheus Server is Ready.
+  version: 2.54.1
+
+--- generate some traffic so there is something to scrape ---
+  waiting 15s for at least 3 scrapes at 5s interval...
+
+--- TARGETS -- health, the resolved address, and how stale the data is ---
+  job=notes-api    health=up     url=http://app:3000/metrics
+     interval=5s  lastDuration=0.0293s  lastScrape=2026-09-03T18:58:29.908755685Z
+  job=prometheus   health=up     url=http://localhost:9090/metrics
+     interval=5s  lastDuration=0.0372s  lastScrape=2026-09-03T18:58:29.222290792Z
+
+--- the up metric -- 1 means the last scrape succeeded ---
+        1.0000  instance=localhost:9090,job=prometheus
+        1.0000  instance=app:3000,job=notes-api,service=notes-api
+
+--- external_labels: every series carries env=exam ---
+  (no data)
+
+--- did the app's own metrics arrive? ---
+      225.0000  (no labels)
+       48.0000  route=/healthz
+        1.0000  route=/readyz
+       70.0000  route=/api/notes/:id
+       43.0000  route=/api/notes
+        3.0000  route=/api/search
+        3.0000  route=/api/stats
+        1.0000  route=unmatched
+       56.0000  route=/metrics
+
+--- a rate() -- this is the query type Prometheus exists for ---
+        1.0182  (no labels)
+
+--- p95 latency from the histogram, per route ---
+        0.0088  route=/healthz
+           nan  route=/readyz
+        0.0083  route=/api/notes/:id
+        0.8333  route=/api/notes
+           nan  route=/api/search
+           nan  route=/api/stats
+           nan  route=unmatched
+        0.0862  route=/metrics
+
+--- mean DB queries per request, per route -- the N+1 in PromQL ---
+        0.0000  app=notes-api,instance=app:3000,job=notes-api,route=/healthz,service=notes-api
+           nan  app=notes-api,instance=app:3000,job=notes-api,route=/readyz,service=notes-api
+        1.0000  app=notes-api,instance=app:3000,job=notes-api,route=/api/notes/:id,service=notes-api
+       21.0000  app=notes-api,instance=app:3000,job=notes-api,route=/api/notes,service=notes-api
+           nan  app=notes-api,instance=app:3000,job=notes-api,route=/api/search,service=notes-api
+           nan  app=notes-api,instance=app:3000,job=notes-api,route=/api/stats,service=notes-api
+           nan  app=notes-api,instance=app:3000,job=notes-api,route=unmatched,service=notes-api
+        0.0000  app=notes-api,instance=app:3000,job=notes-api,route=/metrics,service=notes-api
+
+--- how many series is this Prometheus holding? ---
+  "data":{"headStats":{"numSeries":1352
+  "numLabelPairs":581
+  "chunkCount":1352
+
+--- config Prometheus actually loaded (not the file on disk) ---
+    scrape_interval: 5s
+      env: exam
+  rule_files:
+  - /etc/prometheus/alert.rules.yml
+  - job_name: notes-api
+    scrape_interval: 5s
+    - targets:
+      - app:3000
+  - job_name: prometheus
+    scrape_interval: 5s
+    - targets:
+      - localhost:9090
+
+--- PROOF that app:3000 resolved -- up{job="notes-api"} is 1 ---
+        1.0000  instance=app:3000,job=notes-api,service=notes-api
+  target URL Prometheus is actually hitting:
+    "scrapeUrl":"http://app:3000/metrics"
+    "scrapeUrl":"http://localhost:9090/metrics"
+
+############ task 30 complete ############

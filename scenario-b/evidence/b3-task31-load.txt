@@ -1,0 +1,41 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Thu Sep  3 21:36:13 CEST 2026
+target=http://127.0.0.1:3120 duration=300s burst at +150s for 30s
+sampled 100 real note ids per tenant from postgres:
+  acme      100 ids, e.g. 29019 22659 7022
+  globex    100 ids, e.g. 36254 33603 30483
+  initech   100 ids, e.g. 43947 39689 42265
+  umbrella  100 ids, e.g. 44150 47030 47450
+  hooli     100 ids, e.g. 48507 49875 48752
+
+>>> 21:38:43 BURST START (20 extra concurrent workers)
+>>> 21:39:13 BURST END
+
+21:41:39 done -- roughly 6215 requests issued over 300s
+
+=== status codes (a wall of 404s means the id ranges were wrong) ===
+  200         6280
+  499           75
+
+=== mean DB queries per request, per route ===
+  /api/notes              36.47  over 1263 requests
+  /api/notes/:id           2.00  over 1243 requests
+  /api/search              1.00  over 1243 requests
+  /api/stats               1.00  over 1263 requests
+  /metrics                 0.00  over 67 requests
+  /healthz                 0.00  over 1276 requests
+
+=== rows returned per query name (the unbounded limit) ===
+  notes_list           mean      239.7 rows over 1263 calls
+  tags_for_note        mean        2.9 rows over 99884 calls
+  search_notes         mean        1.1 rows over 1243 calls
+  tenant_lookup        mean        1.0 rows over 16 calls
+  stats_join           mean        1.0 rows over 1263 calls
+  note_by_id           mean        1.0 rows over 1243 calls
+
+=== requests per route ===
+  /healthz                   1276
+  /api/stats                 1263
+  /api/notes                 1263
+  /api/search                1243
+  /api/notes/:id             1243
+  /metrics                     67
