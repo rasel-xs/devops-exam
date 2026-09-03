@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# B1 task 25 -- a DELIBERATELY leaky image, built only as a NEGATIVE CONTROL.
+#
+# "No secrets found in my image" is a weak claim on its own: a scan that finds
+# nothing might simply be broken. This image contains a known secret, deleted
+# in a later layer exactly the way the brief's trap describes. If the scan can
+# recover the secret from HERE and not from the real image, the scan works and
+# the real image is genuinely clean.
+#
+#   docker build -f docker/Dockerfile.leaky -t abdur/notes-api:leaky app/
+#
+# NEVER push or run this. It exists to be searched.
+FROM alpine:3.20
+
+WORKDIR /app
+
+# A fake credential with a distinctive marker string to grep for.
+RUN printf 'DB_PASSWORD=hunter2-LEAKED-MARKER-9f3a\n' > /app/.env
+
+# The trap: the file is "removed"... in a LATER layer. The bytes stay in the
+# earlier layer for ever. Deleting a file in a union filesystem only writes a
+# whiteout entry that hides the path from the running container; it does not
+# and cannot rewrite the layer underneath, because layers are immutable and
+# content-addressed.
+RUN cat /app/.env > /dev/null && rm /app/.env
+
+CMD ["sh", "-c", "echo 'leaky control image -- do not run in anger'"]

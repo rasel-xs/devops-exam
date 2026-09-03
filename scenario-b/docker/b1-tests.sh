@@ -99,15 +99,60 @@ docker history --no-trunc "$IMG" | grep -iE 'password|secret|api_key|token' \
   || echo "  nothing in the layer commands"
 
 echo
-echo "--- unpack EVERY layer and search the raw bytes ---"
-TMP=$(mktemp -d)
-docker save "$IMG" -o "$TMP/img.tar"
-tar -xf "$TMP/img.tar" -C "$TMP"
-echo "  layers extracted: $(find "$TMP" -name '*.tar' | wc -l)"
-grep -rIl -iE 'hunter2|BEGIN [A-Z ]*PRIVATE KEY|AWS_SECRET_ACCESS_KEY' "$TMP" 2>/dev/null \
-  && echo "  ^^ SECRET FOUND" \
-  || echo "  no secrets found in any layer"
-rm -rf "$TMP"
+echo "--- unpack EVERY layer and search inside it ---"
+# Two things the first version of this test got wrong:
+#   1. `docker save` on Docker 25+ writes OCI blobs (blobs/sha256/<digest>),
+#      not per-layer *.tar files, so counting *.tar counted nothing.
+#   2. `grep -I` SKIPS binary files, and layer blobs are gzipped tarballs --
+#      so the search never looked inside them at all.
+# Each blob is therefore extracted first, and the search runs on real files.
+scan_image() {
+  local image=$1 tmp
+  tmp=$(mktemp -d)
+  docker save "$image" -o "$tmp/img.tar"
+  mkdir -p "$tmp/x" "$tmp/layers"
+  tar -xf "$tmp/img.tar" -C "$tmp/x"
+
+  local n=0
+  for blob in $(find "$tmp/x" -type f); do
+    # A layer blob is a tar (often gzipped). Anything that untars is a layer.
+    if tar -tf "$blob" >/dev/null 2>&1; then
+      n=$((n + 1))
+      mkdir -p "$tmp/layers/l$n"
+      tar -xf "$blob" -C "$tmp/layers/l$n" 2>/dev/null || true
+    fi
+  done
+  echo "  layers extracted : $n"
+
+  local hits
+  hits=$(grep -ral -E 'hunter2|LEAKED-MARKER|BEGIN [A-Z ]*PRIVATE KEY|AWS_SECRET_ACCESS_KEY' \
+         "$tmp/layers" 2>/dev/null | head -5)
+  if [ -n "$hits" ]; then
+    echo "  SECRET FOUND in:"
+    printf '%s\n' "$hits" | sed "s|$tmp/layers/|    |"
+    echo "  content:"
+    grep -rah -E 'hunter2|LEAKED-MARKER' "$tmp/layers" 2>/dev/null | head -2 | sed 's/^/    /'
+  else
+    echo "  no secrets found in any extracted layer"
+  fi
+  rm -rf "$tmp"
+}
+
+echo
+echo ">>> NEGATIVE CONTROL: an image that deliberately leaks."
+echo "    Dockerfile.leaky writes a secret, then deletes it in a later layer --"
+echo "    exactly the trap in the brief. If the scan cannot find it HERE, the"
+echo "    scan is broken and 'nothing found' in my real image means nothing."
+docker build -q -f docker/Dockerfile.leaky -t abdur/notes-api:leaky app/ >/dev/null
+echo "    (the file is NOT in the running container:)"
+docker run --rm abdur/notes-api:leaky sh -c 'ls -la /app/.env 2>&1 || echo "      no /app/.env -- looks clean"'
+echo "    (but the bytes are still in an earlier layer:)"
+scan_image abdur/notes-api:leaky
+
+echo
+echo ">>> THE REAL IMAGE, scanned exactly the same way:"
+scan_image "$IMG"
+docker rmi abdur/notes-api:leaky >/dev/null 2>&1
 
 echo
 echo "--- and .dockerignore is why: the file never enters the build context ---"
