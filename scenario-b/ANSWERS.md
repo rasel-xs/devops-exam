@@ -2545,6 +2545,23 @@ newer commit. You then have production running code that no green tick
 corresponds to. Queueing serialises them so each rollout completes before the
 next begins.
 
+**Observed, not just argued.** Two pushes to `main` landed 110 seconds apart
+while finishing this scenario, and the group caught them
+(`evidence/b5-concurrency.txt`):
+
+```
+33905896621  status=pending   created=18:26:28   "restore the task 43 and 44 answers"
+33905733598  status=waiting   created=18:24:38   "revert failure 3"
+```
+
+The older run is `waiting` — held at the task 44 approval gate — and it is
+still holding the concurrency group, so the newer one is `pending` and has not
+started. Without `cancel-in-progress: false` both would have proceeded and
+issued `docker service update` against `abdur_notes_app` concurrently, which is
+precisely the incident described above. Note also *which* one is queued: the
+**newer** commit is the one waiting, so if these had raced, the version left
+running could easily have been the older one.
+
 Note the deliberate asymmetry: the PR workflow uses `cancel-in-progress: true`,
 because superseding a build wastes nothing, while cancelling a half-finished
 deploy leaves the service mid-rollout — the exact state the group exists to
