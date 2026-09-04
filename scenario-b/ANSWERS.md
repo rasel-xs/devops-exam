@@ -2188,43 +2188,208 @@ nothing.
 
 ### Task 43 — The main pipeline
 
-[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). Builds, tags
-with **both** `v1.0.<commit-count>` and the full git SHA (plus `latest`), pushes
-to GHCR.
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). Builds,
+tags, pushes to GHCR, then deploys behind the task 44 gate.
 
-**No long-lived credentials.** GHCR auth uses `${{ github.token }}`, which
-GitHub mints per run and expires when the job ends. There is no
-`AWS_SECRET_ACCESS_KEY` and no static access key anywhere in this repository —
-the OIDC pattern is included commented at the bottom of the file and is what
-Scenario C uses.
+**Green run: [33903125661](https://github.com/rasel-xs/devops-exam/actions/runs/33903125661)**
+— `build-and-push` 1m17s, `deploy` 1m46s, 3m22s end to end.
+Evidence: `evidence/b5-deploy-green.txt`.
+
+```
+building v1.0.69 from b4e7dfc
+ghcr.io/rasel-xs/notes-api:v1.0.69
+ghcr.io/rasel-xs/notes-api:sha-b4e7dfc59f31b5b32ca74c2b454c59f1b99d407c
+ghcr.io/rasel-xs/notes-api:latest
+```
+
+Package page: `evidence/b5-ghcr-tags.png`.
+
+**Three tags, three different jobs.** `v1.0.<commit-count>` is ordered and
+readable, so "which release is older" is answerable at a glance. The full SHA
+tag is unambiguous — it names the commit that produced this exact artefact, and
+it is the tag I would use to answer "what is actually running?" during an
+incident. `latest` exists only on the default branch and is a convenience, never
+a deploy target: B4 task 38's rollback works because the previous version is a
+specific artefact still in the registry, which is exactly what `latest` is not.
+
+**No long-lived credentials.** GHCR auth is `${{ github.token }}`, minted per run
+and expired when the job ends. There is no `AWS_SECRET_ACCESS_KEY` and no static
+access key anywhere in this repository; the OIDC pattern Scenario C uses is
+included commented at the bottom of the file.
 
 The SSH deploy key **is** a long-lived secret and I am not pretending otherwise.
-What limits it: it is scoped to the `production` environment so only an approved
-deployment can read it, it should be a dedicated key restricted with
-`command="..."` in the server's `authorized_keys` so it can only run the deploy
-script, and it is rotatable from one place.
+What limits it is in task 44 below, and it is tested rather than asserted.
 
-Multi-arch (`linux/amd64,linux/arm64`) is enabled. It matters here because the
-VPS is amd64 and my laptop is an arm64 Mac: a single-arch amd64 image runs on
-the Mac only under emulation, and an arm64-only image will not run on the VPS at
-all — it fails with `exec format error`, which reads like a corrupt binary
-rather than an architecture mismatch. The cost is roughly double the build time,
-since the non-native architecture is built under QEMU.
+**Multi-arch (`linux/amd64,linux/arm64`).** The VPS is amd64 and my laptop is an
+arm64 Mac: an amd64-only image runs on the Mac under emulation, and an
+arm64-only image does not run on the VPS at all — it fails with
+`exec format error`, which reads like a corrupt binary rather than an
+architecture mismatch. The cost is roughly double the build time, since the
+non-native architecture builds under QEMU.
 
-Package page with multiple tags: `evidence/b5-ghcr-tags.png`.
+**`APP_VERSION` is a build arg, not a constant.** This was wrong for the first
+three CI deploys and is written up in task 44; the short version is that B4 task
+37 established "bake the version into the artefact, never into deploy config",
+and this pipeline obeyed the letter of that while baking in a **fixed** string,
+so every image reported `v1` regardless of its tag.
 
 ### Task 44 — The approval gate
 
-`environment: production` with a required reviewer configured in
-Settings → Environments.
+`environment: production` with a required reviewer, created through the
+Environments API rather than by hand so the configuration is reproducible.
+
+```
+run 33903125661 approvals:
+  state: approved
+  by: rasel-xs
+  environments: production
+```
 
 - Paused with "Review pending deployments": `evidence/b5-approval-pending.png`
 - After approval: `evidence/b5-approval-approved.png`
+- Machine-readable capture of the paused state: `evidence/b5-approval-pending.txt`
 - New tag live on the VPS: `evidence/b5-vps-new-version.png`
 
-The gate does more than pause: environment-scoped secrets are unreadable by any
-job that has not passed it, so the SSH key cannot be exfiltrated by a workflow
-change alone.
+**The gate is a secret boundary, not just a pause.** All four VPS secrets
+(`VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, `VPS_HOST`, `VPS_USER`) are scoped to the
+`production` environment, not to the repository. `gh secret list` at repository
+level returns none of them. A job that has not passed the gate cannot read the
+deploy key at all — so a workflow change that tries to exfiltrate it has to get
+a human to approve the deployment first.
+
+#### The deploy key cannot open a shell
+
+The claim "restricted to one command" is worth nothing unless it is tested, so
+it was (`evidence/b5-deploykey-restriction.txt`):
+
+```
+authorized_keys:
+  command="/root/abdur-deploy.sh",no-port-forwarding,no-agent-forwarding,
+  no-X11-forwarding,no-pty,no-user-rc ssh-ed25519 AAAA... github-actions-abdur-deploy
+
+whoami                   -> refused: this key may only run 'deploy <tag>', 'status' or 'health'
+cat /etc/shadow          -> refused
+(no command / shell)     -> refused
+deploy v9.9.9-evil       -> refused: tag is not v1.0.<n> or sha-<hex>
+deploy ../../etc/passwd  -> refused
+deploy 1.0.0; id         -> refused          <- the '; id' never ran
+status                   -> exit 0
+```
+
+The VPS is shared and the account is root, so an unrestricted key in a repository
+secret would mean: anyone who can change a workflow, or read the secret through
+a compromised marketplace action, gets root on a machine that is not only mine.
+The forced command does not make the key harmless — it changes the blast radius
+from "root shell" to "can deploy a tag that already exists in my registry". That
+is the honest claim.
+
+`no-pty` and `no-port-forwarding` matter separately from the forced command:
+without them the key could still be used to tunnel to other students' services
+on the box. `no-user-rc` closes `~/.ssh/rc` as a way around the forced command.
+
+The workflow uses plain `ssh` rather than a marketplace action, because an action
+that receives the private key is one more supply-chain hop for the most sensitive
+secret in the repository and buys nothing here — the whole remote side is one
+forced command taking one argument. Host key pinned from a secret with
+`StrictHostKeyChecking=yes`; neither `no` nor `accept-new`, both of which hand
+the key to whoever answers port 22 first.
+
+#### What the successful deploy looked like
+
+```
+deploying ghcr.io/rasel-xs/notes-api:v1.0.69 to abdur_notes_app
+  [1]  state=updating   replicas=3/3  tasks_on_v1.0.69=1/3
+  [4]  state=updating   replicas=4/3  tasks_on_v1.0.69=1/3     <- start-first: 4 tasks for 3 replicas
+  [10] state=updating   replicas=3/3  tasks_on_v1.0.69=3/3
+  [17] state=completed  replicas=3/3  tasks_on_v1.0.69=3/3
+  health poll 1/30
+live and healthy: {"status":"ok","version":"v1.0.69","host":"b47949a4d83d"}
+...then from the runner, over the public internet:
+                  {"status":"ok","version":"v1.0.69","host":"8407754bfd5b"}
+deployed version was v1.0.69
+```
+
+The two health responses come from **different containers** — the routing mesh
+picked a different replica for the external check. That is stronger evidence
+than one container answering twice: it shows more than one replica is on the new
+version and reachable from outside the host.
+
+The `replicas=4/3` samples are `order: start-first` with `parallelism: 1`
+creating the replacement before retiring the task it replaces, the same
+behaviour measured in B4 task 37.
+
+#### Five bugs, each hidden behind the last
+
+The first CI deploy succeeded and the pipeline called it a failure. The second
+succeeded and the pipeline hung. This is the record of what was actually wrong,
+because none of it was visible until the defect in front of it was cleared.
+
+**1 — No SSH keepalive.** Run #9 updated all three replicas, then died with
+`client_loop: send disconnect: Broken pipe`, exit 255, during a quiet minute in
+the remote health loop. The deploy had worked; the transport had not.
+Fixed with `ServerAliveInterval=15`.
+
+**2 — `docker service update` never converged.** Run #10 printed
+`overall progress: 0 out of 3 tasks` for over eight minutes, while
+`UpdateStatus` said `completed` after **93 seconds** and all three tasks were
+healthy on the new image. The cause was a leftover task from the task 39
+reservation experiment with an **empty `NodeID`** — the progress writer resolves
+tasks to node names and never can for that one, so the slot is never marked
+done. The same ghost had already broken `docker service logs` in B4 task 40. It
+has since aged out of task history on its own; `--detach` plus an explicit poll
+stays, because the next ghost costs another eight minutes.
+
+**3 — `APP_VERSION` was a constant.** Every CI image carried tag `v1.0.<n>` and
+answered `"version":"v1"` from `/healthz`. This is the *other half* of the B4
+task 37 bug. There, the fix was "bake the version into the artefact rather than
+supplying it from deploy config" — and this pipeline did exactly that, while
+baking in a fixed string. **The dangerous property of this one is that it raises
+no red light at all**: the deploy is green, `/healthz` returns 200, and the only
+symptom is that the endpoint whose job is to answer "which code is running?"
+answers the same thing forever. Now `ARG APP_VERSION` with the CI passing the
+version it derived.
+
+**4 — `curl` with no timeout against `localhost`.** Run #11 sat on
+`health poll 1/30` for eight minutes and **never printed poll 2** — so curl
+blocked on the first call rather than being slow, which is what distinguishes a
+hang from a delay. `localhost` resolves to `::1` first and the published port is
+IPv4. B2 task 28 measured the underlying behaviour directly: a dropped packet
+produces no RST, so the client waits out the full TCP timeout instead of failing
+fast. Every B4 script used `127.0.0.1` with `--max-time` for that reason; this
+script had drifted off it.
+
+**5 — A bare `{{.UpdateStatus.State}}` template.** It fails with
+`map has no entry for key "UpdateStatus"` when the field is **absent** — which it
+is on a service that has never been updated, and after a no-op update. CI never
+hits this, because every run carries a fresh tag. Re-running the same tag by
+hand does, which is how it surfaced.
+
+**The convergence check that came out of this is deliberately ordered:**
+
+1. **Rollback first.** It is the one failure that task-counting cannot see —
+   the tasks return to the old image and the count simply never rises.
+2. **Then the task count**, which is the authority. This comes straight from B4
+   task 38 phase B, where Swarm reported `update completed` for a service
+   answering 500 to every request.
+3. **`UpdateStatus` last**, and only to separate "nothing to do" from "done".
+
+#### The method lesson, stated plainly
+
+Four of these five were found by pushing to CI and waiting — five to fifteen
+minutes each, plus a build, a queue and an approval every time. The fifth was
+found in seconds by running the same script by hand over SSH, which is what I
+should have done first. **A deploy script is the slowest possible thing to debug
+from inside CI**, and it is usually runnable directly. The final version was
+verified by hand before being pushed: `deploy v1.0.68` gave exit 0 and
+`{"version":"v1.0.68"}`, `deploy v9.9.9` gave exit 1.
+
+There is a second, less comfortable lesson. Twice the pipeline reported failure
+while production was healthy and correctly updated. B4 task 38 showed the
+opposite — a tool reporting success over a service returning 500s. Both
+directions have the same moral: **a pipeline's verdict is a statement about the
+pipeline.** The only thing that settles what is running in production is asking
+production, which is why the last step of this deploy queries the service from
+outside the host rather than trusting the exit code of the step before it.
 
 ### Task 45 — Break it three ways
 
