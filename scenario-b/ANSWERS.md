@@ -1202,6 +1202,15 @@ correct, not broken — but it means the table is only meaningful while traffic
 is flowing, which is why the final screenshots were taken with the load
 generator running.
 
+**Panel screenshots under load:**
+[`evidence/b3-task32-panels-top.png`](evidence/b3-task32-panels-top.png) (panels
+A–C) and
+[`evidence/b3-task32-panels-bottom.png`](evidence/b3-task32-panels-bottom.png)
+(D–H). The first pair I took were retaken: they were captured during an idle
+window, so panels D–G were empty and a dashboard with no data is exactly what
+the brief calls out as a viva trigger. These are taken with `loadtest.sh`
+running.
+
 ### Task 33 — The alert
 
 Two copies of the same condition, deliberately:
@@ -1639,7 +1648,10 @@ four from a single request — `/healthz` returns `{"status","version","host"}`
 and `-w` appends the code — so the same log that proves there was no downtime
 also shows the version flipping.
 
-**Result (run 2, `evidence/b4-task37.txt`):**
+**Result (run 2, `evidence/b4-task37.txt`;** the raw per-request log of all 421
+responses is [`evidence/b4-task37-update-log.txt`](evidence/b4-task37-update-log.txt),
+and run 1's is
+[`evidence/b4-task37-run1-update-log.txt`](evidence/b4-task37-run1-update-log.txt)**)**
 
 ```
 STATUS CODE COUNT        421 200          <- zero non-200 responses
@@ -1746,6 +1758,10 @@ reaches healthy never receives a single request. The failure was contained to
 the orchestrator; it never reached a user.
 
 #### Phase B — the identical image with `--no-healthcheck`
+
+Raw per-request log for this phase:
+[`evidence/b4-task38-traffic.txt`](evidence/b4-task38-traffic.txt) — 327 lines,
+one per request, which is where the counts below come from.
 
 ```
 UpdateStatus.State         completed

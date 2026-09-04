@@ -21,7 +21,12 @@ Everything is created by [`configs/setup-users.sh`](configs/setup-users.sh) and 
 [`configs/verify-a1.sh`](configs/verify-a1.sh), whose full output is in
 [`evidence/a1-proof-table.txt`](evidence/a1-proof-table.txt).
 
-### Result
+### Task 1 — Users, groups, ownership and ACLs
+
+Created by [`configs/setup-users.sh`](configs/setup-users.sh); the model is the
+table below, and the proof is the check run that follows it.
+
+#### Result
 
 `configs/verify-a1.sh` on 2026-09-01: **PASS=12 FAIL=0** — full output in
 [`evidence/a1-proof-table.txt`](evidence/a1-proof-table.txt).
@@ -117,6 +122,12 @@ in the policy. `sudo -l -U abdur_alice` prints the exact allowed list.
 ---
 
 ## A2 — Who is using my port?
+
+Full session transcript: [`evidence/a2-session.txt`](evidence/a2-session.txt).
+The task 8 half was run **from my laptop rather than on the box**, because
+"timed out" and "connection refused" are indistinguishable from localhost —
+that transcript is
+[`evidence/a2-task8-from-laptop.txt`](evidence/a2-task8-from-laptop.txt).
 
 ### Task 5 — Identifying the process
 
@@ -504,7 +515,53 @@ the brief asks for, in real recurring data rather than a staged one-off.
 
 ## A4 — systemd
 
-Unit: [`configs/abdur-myapp.service`](configs/abdur-myapp.service)
+Unit: [`configs/myapp.service`](configs/myapp.service)
+
+### Task 12 — The unit file
+
+[`configs/myapp.service`](configs/myapp.service), installed as
+`/etc/systemd/system/abdur-myapp.service`. The unit running, crashing and being
+held down is captured across
+[`evidence/a4-task13-always.txt`](evidence/a4-task13-always.txt),
+[`evidence/a4-task13-limited.txt`](evidence/a4-task13-limited.txt),
+[`evidence/a4-task14-journalctl.txt`](evidence/a4-task14-journalctl.txt) and
+[`evidence/a4-task15-watchdog.txt`](evidence/a4-task15-watchdog.txt).
+
+| Requirement | Directive | Why this one |
+| --- | --- | --- |
+| Run as a non-root, dedicated account | `User=abdur_myappuser`, `Group=abdur_myappuser` | A system account with `--shell /usr/sbin/nologin` and no home. Nothing else on the box runs as it, so a compromise of the app is scoped to the app |
+| Start after the network is genuinely up | `Wants=network-online.target` + `After=network-online.target` | See below — the usual version of this is wrong |
+| Order after the database | `After=postgresql.service` | Ordering **only**. Deliberately not `Requires=` |
+| Restart on failure | `Restart=on-failure`, `RestartSec=1` | `on-failure`, not `always` — see task 13 |
+| Tagged logging | `SyslogIdentifier=abdur-myapp` | Makes `journalctl -t abdur-myapp` work as well as `-u` |
+| Start at boot | `WantedBy=multi-user.target` + `systemctl enable` | |
+| Graceful stop | `KillSignal=SIGTERM`, `TimeoutStopSec=10` | In-flight requests finish before SIGKILL |
+
+**`network.target` is not the one you want.** It means "the network stack has
+been configured", which is true long before an address is routable.
+`network-online.target` is the one that waits for a usable address — but it is a
+passive target that does nothing unless something pulls it in, which is what
+`Wants=` does. `After=network-online.target` **without** the `Wants=`, and
+without `systemd-networkd-wait-online` / `NetworkManager-wait-online` enabled,
+gives ordering that looks correct in the file and orders against nothing.
+
+**`After=` versus `Requires=` for the database.** `After=` is ordering alone: if
+postgres is dead, this unit still starts. `Requires=` would couple them, so a
+failed database would stop the app from starting and a restarted database would
+restart the app. I chose `After=`, because the app retries its connection and I
+would rather it run and report itself unready — the `/readyz` versus `/healthz`
+distinction from B2 task 26 — than refuse to start and lose the endpoint that
+would tell me why.
+
+**Hardening, which the brief did not ask for.** `NoNewPrivileges=true` alone
+closes the entire setuid escalation path, and with `ProtectSystem=strict`,
+`ProtectHome=true`, `PrivateTmp=true`, `RestrictSUIDSGID=true` and
+`RestrictNamespaces=true` the difference is between "runs as a non-root user"
+and "cannot become root". This has one real cost worth knowing:
+`ProtectSystem=strict` makes the whole filesystem read-only, so the one path the
+app legitimately writes has to be named — `ReadWritePaths=/srv/abdur/app/logs`.
+Forgetting that line produces `EACCES` on a directory whose permissions look
+perfectly correct in `ls -l`, which is a genuinely confusing way to fail.
 
 ### Task 13 — The restart limit
 
@@ -636,8 +693,8 @@ read application logs without systemd's lifecycle chatter, `-t` is the one.
 
 ### Task 15 — Alive but dead
 
-Watchdog: [`configs/abdur-myapp-watchdog.sh`](configs/abdur-myapp-watchdog.sh) +
-[`.service`](configs/abdur-myapp-watchdog.service) + [`.timer`](configs/abdur-myapp-watchdog.timer),
+Watchdog: [`configs/myapp-watchdog.sh`](configs/myapp-watchdog.sh) +
+[`.service`](configs/myapp-watchdog.service) + [`.timer`](configs/myapp-watchdog.timer),
 firing every 30s.
 
 **Why `Restart=on-failure` did not catch it.** `Restart=` is a reaction to a
