@@ -38,10 +38,10 @@ measurement that corrected it are both kept — there are around twenty of them.
 
 ## Bonus — AI_PROMPTS.md
 
-**1 of the minimum 8 entries written.** The remaining seven are being filled
-from real problems encountered during execution. Entries that only paste a
-prompt score 2 marks, so each needs the "what was wrong with the answer" and
-"what I actually changed" parts.
+**Complete: 9 entries against a minimum of 8.** Seven of the nine are cases
+where the answer I was given, or the prediction I wrote from it, was wrong and a
+measurement corrected it — which is the part the marks are for, rather than the
+prompts themselves.
 
 ## Screenshots still to capture
 
