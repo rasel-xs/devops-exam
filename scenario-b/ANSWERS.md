@@ -2032,35 +2032,159 @@ times over.
 against a real Postgres service container → build → **run the image and curl
 `/healthz`** → assert non-root and no `.env` in the image.
 
-- Failing run: `<<FILL: URL>>` — `evidence/b5-pr-failed.png`
-- Passing run after the fix: `<<FILL: URL>>` — `evidence/b5-pr-passed.png`
+**PR #1: <https://github.com/rasel-xs/devops-exam/pull/1>**
 
-The tests use a real database on purpose. The bugs that matter in this app are
-SQL and tenant scoping, and a mocked database cannot see either — the
-cross-tenant read test is the one that would actually stop a data leak reaching
-production.
+| | Run | Result |
+| --- | --- | --- |
+| Failing | [33884146208](https://github.com/rasel-xs/devops-exam/actions/runs/33884146208) | `test` **failure** in 21s, `build-and-smoke` **skipped** in 0s |
+| Passing | [33884321458](https://github.com/rasel-xs/devops-exam/actions/runs/33884321458) | both green, 47s end to end |
 
-The smoke step earns its place because an image can build perfectly and still be
-unable to start: a typo in `CMD`, a runtime file excluded by `.dockerignore`, a
-native module built against the wrong libc. Only running it finds that. It polls
-for up to 30s rather than `sleep 10 && curl`, because a fixed sleep is either
-flaky or slow and usually both.
+Screenshots: `evidence/b5-pr-failed.png`, `evidence/b5-pr-passed.png`. Full log
+extract: `evidence/b5-pr-failed.txt`.
+
+#### The bug the PR was built around
+
+Rather than break something arbitrary, PR #1 introduces the failure that matters
+most in a multi-tenant application — and introduces it the way it actually
+happens. The change removes the `tenant_id` predicate from `GET /api/notes/:id`:
+
+```diff
+-      'SELECT * FROM notes WHERE id = $1 AND tenant_id = $2',
+-      [req.params.id, req.tenantId]);
++      // id is the primary key, so the tenant_id condition is redundant.
++      'SELECT * FROM notes WHERE id = $1',
++      [req.params.id]);
+```
+
+The commit message's reasoning is the kind that survives code review: `id` *is*
+unique, so the query does return exactly one row either way. What it stops doing
+is checking **whose** row it is. `GET /api/notes/<id>` with any `X-Tenant` header
+now returns another tenant's note.
+
+```
+not ok 3 - a note created by one tenant is invisible to another
+    cross-tenant read returned data
+  expected: 404
+  actual: 200
+# tests 10   # pass 9   # fail 1
+```
+
+#### Three things this run demonstrates that a green tick alone would not
+
+**1. Nine of ten tests passed.** The suite was not broadly red — a single
+assertion stood between this and a production data leak. That is the argument
+for the cross-tenant test existing at all, and for it asserting a **404** rather
+than checking a response shape.
+
+**2. One test on the very same endpoint did not catch it.** `GET /api/notes/:id
+returns 404 for an id that does not exist` passed, because a nonexistent id
+yields zero rows with or without the predicate. Same route, same bug, silent.
+Test coverage of an endpoint is not the same as coverage of its *security
+property*, and a coverage percentage would have reported both tests as equal
+value.
+
+**3. `build-and-smoke` ran for 0 seconds.** `needs: test` gated it, so the
+broken code was never built, never containerised, and could not have reached a
+registry or a deploy job even in principle. This is the same ordering argument
+that task 45 relies on, observed here rather than asserted.
+
+#### Why a real database instead of a mock
+
+This bug is *entirely* in SQL. A mocked `db.query` returns whatever the test
+author told it to return, so the mock would have reported the same rows before
+and after the change and every test would have passed. The class of bug that
+most threatens this application is invisible to the testing style that would be
+faster and easier to set up. The Postgres service container is health-gated with
+`pg_isready` for the reason B2 task 26 measured directly: without it the job
+races `initdb` and fails intermittently, which is worse than failing always.
+
+#### Why the smoke step earns its place
+
+An image can build perfectly and still be unable to start: a typo in `CMD`, a
+runtime file excluded by `.dockerignore`, a native module built against the
+wrong libc. Only running it finds that. It polls for up to 30s rather than
+`sleep 10 && curl`, because a fixed sleep is either flaky or slow and usually
+both. It is deliberately given a **bogus** `DATABASE_URL`, which works precisely
+because `/healthz` is a liveness probe that does not touch the database — the
+distinction B2 task 26 established. A smoke test pointed at `/readyz` would need
+a database and would be testing something else.
+
+The non-root and no-`.env` assertions turn B1 tasks 21 and 25 from a one-off
+screenshot into a check that runs on every pull request.
 
 ### Task 42 — Caching
 
-| Run | Duration |
-| --- | --- |
-| Cold (no cache) | `<<FILL: e.g. 2m41s>>` |
-| Warm | `<<FILL: e.g. 51s>>` |
-| Improvement | `<<FILL: e.g. 68%>>` |
-
 Two independent caches: `actions/setup-node` with `cache: 'npm'` keyed on the
-lockfile hash (so `npm ci` installs from the local cache instead of the
-network), and `type=gha` for Docker layers via Buildx.
+lockfile hash, and `type=gha` for Docker layers via Buildx.
 
-Worth knowing: GitHub's cache is scoped per branch, with read-only access to the
-default branch's cache. A PR's first run therefore warms from `main`'s cache but
-cannot write to it, so the very first run on a new dependency set is always cold.
+#### The measurement
+
+The first attempt at this was wrong and is worth recording, because it would
+have produced a confident number from a contaminated experiment. PR #1's second
+run looked like a cold Docker build — it was the first `build-and-smoke` this
+branch had ever completed — but its log said `importing cache manifest` and
+showed nine `CACHED` layers, and the build finished in 9s. The cache had been
+populated by `deploy.yml`, which has been running on **every push to `main`
+since 2 September** with `cache-to: type=gha,mode=max`. Nothing about the branch
+looked warm; the cache is shared across the repository.
+
+So the real measurement deletes the cache first, and holds the code fixed:
+
+- `gh cache delete --all` — 60 entries, ~440 MiB of buildkit blobs
+- two `git commit --allow-empty` pushes, so the tree is **byte-identical**
+  between the two runs and the only variable is cache presence
+
+| | Cold | Warm | Change |
+| --- | ---: | ---: | ---: |
+| **Whole run** | **136s** | **71s** | **−48%** |
+| `test` job | 27s | 34s | **+26%** |
+|   ↳ Install dependencies | 2s | 1s | −50% |
+| `build-and-smoke` job | 106s | 34s | −68% |
+|   ↳ **Build the image** | **83s** | **12s** | **−86%** |
+
+Cold run [33884738905](https://github.com/rasel-xs/devops-exam/actions/runs/33884738905),
+warm run [33885130382](https://github.com/rasel-xs/devops-exam/actions/runs/33885130382).
+Log extract: `evidence/b5-cache.txt`.
+
+#### The test job got *slower*, and that is the more useful result
+
+The npm cache verifiably worked:
+
+```
+Cache hit for: node-cache-Linux-x64-npm-f71aae76…
+added 86 packages, and audited 87 packages in 408ms     (warm)
+added 86 packages, and audited 87 packages in 1s        (cold)
+```
+
+It saved about 600 ms. The job still took 7 seconds **longer**, because
+`Initialize containers` — pulling `postgres:16-alpine` — took 20s warm against
+13s cold. That is runner-to-runner variance, and it is an order of magnitude
+larger than the thing being optimised.
+
+Two things follow, and both matter more than the headline percentage:
+
+1. **A single before/after pair cannot prove a small improvement.** The npm
+   cache is real and measurable in its own step, and completely invisible at job
+   level. Had I only reported the job totals, the honest reading of this data is
+   "npm caching made CI slower", which is false.
+2. **Cache where the work is.** 86 packages is nothing. The expensive thing is
+   the Docker build — a Debian base image, `npm ci` inside a layer, and a second
+   Alpine stage — and that is exactly where the 71 seconds came from.
+
+The largest remaining cost in the `test` job is the Postgres image pull, and
+**no cache setting in this workflow addresses it**, because service-container
+images are pulled by the runner before any step executes. Adding more `cache:`
+keys would not touch it.
+
+#### Scope, and the trap in it
+
+GitHub's cache is scoped per branch, with read-only access to the default
+branch's cache. A PR therefore warms from `main` but cannot write back, so the
+first run on a new dependency set is always cold — and, as the contaminated
+measurement above shows, a branch can be warm on its very first build because of
+work `main` did days earlier. "First run on this branch" is not a synonym for
+"cold cache", and assuming it is produces a number that looks fine and means
+nothing.
 
 ### Task 43 — The main pipeline
 
