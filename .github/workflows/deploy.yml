@@ -1,4 +1,4 @@
-# exam token: REPLACE_WITH_EXAM_TOKEN
+# exam token: root-vmi3536696-1788282556-1536d427
 # B5 tasks 43-46 -- the main branch pipeline.
 #
 # CREDENTIALS POLICY (the brief makes this an instant zero):
@@ -83,7 +83,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
-            exam.token=REPLACE_WITH_EXAM_TOKEN
+            exam.token=root-vmi3536696-1788282556-1536d427
 
       - name: Build and push
         id: push
@@ -120,7 +120,7 @@ jobs:
     # are also unreadable by any job that has not passed the gate.
     environment:
       name: production
-      url: http://REPLACE_WITH_VPS_IP:3000/
+      url: http://169.58.246.108:3140/
     steps:
       - name: Deploy to the swarm over SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -150,9 +150,9 @@ jobs:
               --update-monitor 20s \
               --update-failure-action rollback \
               --with-registry-auth \
-              notes_app
+              abdur_notes_app
 
-            docker service ps notes_app --no-trunc | head -10
+            docker service ps abdur_notes_app --no-trunc | head -10
 
       - name: Verify the deployed version actually answers
         uses: appleboy/ssh-action@v1.0.3
@@ -163,15 +163,15 @@ jobs:
           script: |
             set -euo pipefail
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:3000/healthz | grep -q '"status":"ok"'; then
+              if curl -sf http://localhost:3140/healthz | grep -q '"status":"ok"'; then
                 echo "live and healthy"
-                curl -s http://localhost:3000/healthz
+                curl -s http://localhost:3140/healthz
                 exit 0
               fi
               sleep 2
             done
             echo "::error::deployed service did not become healthy"
-            docker service ps notes_app --no-trunc
+            docker service ps abdur_notes_app --no-trunc
             exit 1
 
 # ---------------------------------------------------------------------------
