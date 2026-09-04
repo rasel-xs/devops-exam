@@ -144,8 +144,6 @@ describe('notes', () => {
 
   test('GET /api/notes/:id returns 404 for an id that does not exist', async () => {
     const res = await fetch(`${base}/api/notes/99999999`, { headers: { 'X-Tenant': 'acme' } });
-    // B5 task 45, failure 1: deliberately inverted. A missing note is a 404,
-    // not a 200. Reverted in the commit after the failing run is recorded.
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 404);
   });
 });

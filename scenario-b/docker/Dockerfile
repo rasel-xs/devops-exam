@@ -61,6 +61,9 @@ RUN rm -rf /usr/local/lib/node_modules/npm \
 # correctly for it.
 COPY --from=deps --chown=node:node /build/node_modules ./node_modules
 COPY --chown=node:node package.json ./
+# B5 task 45, failure 2: deliberate. This path does not exist in the build
+# context, so the builder fails at this layer. Reverted after the run.
+COPY --chown=node:node nonexistent-file ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node db ./db
 
