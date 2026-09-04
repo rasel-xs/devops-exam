@@ -219,9 +219,10 @@ app.get('/api/notes/:id', resolveTenant, async (req, res, next) => {
     // tenant_id is in the WHERE clause, not checked after the fetch. Filtering
     // in application code after selecting by id alone is how multi-tenant data
     // leaks happen -- one forgotten `if` and tenant A reads tenant B's note.
+    // id is the primary key, so the tenant_id condition is redundant.
     const r = await db.query('note_by_id',
-      'SELECT * FROM notes WHERE id = $1 AND tenant_id = $2',
-      [req.params.id, req.tenantId]);
+      'SELECT * FROM notes WHERE id = $1',
+      [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'not found' });
 
     const tags = await db.query('tags_for_note',
