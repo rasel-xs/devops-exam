@@ -27,7 +27,7 @@ cmd="${SSH_ORIGINAL_COMMAND:-}"
 case "$cmd" in
   "deploy "*)  tag="${cmd#deploy }" ;;
   "status")    exec docker service ps "$SERVICE" --no-trunc ;;
-  "health")    exec curl -sf http://localhost:3140/healthz ;;
+  "health")    exec curl -sf --connect-timeout 3 --max-time 5 http://127.0.0.1:3140/healthz ;;
   *)
     echo "refused: this key may only run 'deploy <tag>', 'status' or 'health'" >&2
     echo "received: $cmd" >&2
@@ -65,7 +65,22 @@ echo "deploying $IMAGE to $SERVICE"
 # the PREVIOUS update's "completed" in the first second and declare success
 # before Swarm has even started -- a bug I put in this script and caught by
 # reading it, not by running it.
-prev_started=$(docker service inspect "$SERVICE" --format '{{.UpdateStatus.StartedAt}}')
+#
+# The {{if}} guard is not defensive noise. `docker service inspect` omits
+# UpdateStatus ENTIRELY -- not empty, absent -- on a service that has never been
+# updated, and Swarm also clears it when an update turns out to be a no-op.
+# A bare {{.UpdateStatus.State}} then fails with
+# "map has no entry for key UpdateStatus" and kills the script under set -e.
+# CI never hits it because every run carries a fresh tag; re-running the same
+# tag by hand does, which is how it was found.
+upd_state() {
+  docker service inspect "$SERVICE" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}none{{end}}'
+}
+upd_started() {
+  docker service inspect "$SERVICE" --format '{{if .UpdateStatus}}{{.UpdateStatus.StartedAt}}{{else}}none{{end}}'
+}
+
+prev_started=$(upd_started)
 
 docker service update --detach \
   --image "$IMAGE" \
@@ -82,33 +97,41 @@ converged=no
 i=0
 while [ "$i" -lt 72 ]; do
   i=$((i + 1))
-  state=$(docker service inspect "$SERVICE" --format '{{.UpdateStatus.State}}')
-  started=$(docker service inspect "$SERVICE" --format '{{.UpdateStatus.StartedAt}}')
+  state=$(upd_state)
+  started=$(upd_started)
   reps=$(docker service ls --filter "name=$SERVICE" --format '{{.Replicas}}')
   want=${reps#*/}
   on_new=$(docker service ps "$SERVICE" --filter desired-state=running \
              --format '{{.Image}}' | grep -c ":${tag}\$" || true)
   echo "  [$i] state=$state  replicas=$reps  tasks_on_${tag}=$on_new/$want"
 
-  # Three conditions, because any one of them alone has a way of lying:
-  #   - a stale "completed" belongs to the previous update  -> compare StartedAt
-  #   - "completed" is Swarm's opinion of its own rollout   -> count the tasks
-  #   - counting tasks alone cannot see a rollback          -> read the state
-  if [ "$started" != "$prev_started" ]; then
-    case "$state" in
-      completed)
-        [ "$on_new" = "$want" ] && { converged=yes; break; } ;;
-      rollback_started|rollback_completed|rollback_paused|paused)
-        echo "ERROR: the update did not succeed -- state=$state" >&2
-        docker service ps "$SERVICE" --no-trunc >&2
-        exit 1 ;;
-    esac
+  # A rollback is the one thing task-counting cannot see: the tasks go back to
+  # the OLD image and the count simply never rises. Check it first.
+  case "$state" in
+    rollback_started|rollback_completed|rollback_paused|paused)
+      echo "ERROR: the update did not succeed -- state=$state" >&2
+      docker service ps "$SERVICE" --no-trunc >&2
+      exit 1 ;;
+  esac
+
+  # Otherwise the authority is the task count, not Swarm's opinion of itself --
+  # B4 task 38 phase B had Swarm reporting "update completed" for a service
+  # answering 500 to every request. "none" is the legitimate no-op case: the
+  # service already runs this tag and there was nothing to roll.
+  if [ "$on_new" = "$want" ]; then
+    if [ "$state" = "none" ]; then
+      echo "  (no update was needed -- already on $tag)"
+      converged=yes; break
+    fi
+    if [ "$state" = "completed" ] && [ "$started" != "$prev_started" ]; then
+      converged=yes; break
+    fi
   fi
   sleep 5
 done
 
 if [ "$converged" != "yes" ]; then
-  echo "ERROR: update did not reach 'completed' within 6 minutes" >&2
+  echo "ERROR: did not converge on $tag within 6 minutes" >&2
   docker service ps "$SERVICE" --no-trunc >&2
   exit 1
 fi
@@ -119,6 +142,12 @@ docker service ps "$SERVICE" --no-trunc | head -10
 # The update reaching "completed" only means Swarm accepted and rolled it out.
 # B4 task 38 phase B is the reason this check exists: Swarm reported
 # "update completed" for a service answering 500 to every request.
+# 127.0.0.1 and not "localhost", with explicit timeouts. CI run #11 sat on
+# "health poll 1/30" for eight minutes: "localhost" resolves to ::1 first, the
+# published port is IPv4, and a curl with no --connect-timeout waits out the
+# full TCP timeout rather than failing fast. B2 task 28 measured exactly this --
+# a dropped packet gives no RST, so the client just waits. Every B4 script used
+# 127.0.0.1 and --max-time for that reason; this one had drifted.
 echo "--- verifying the deployed version actually answers ---"
 for i in $(seq 1 30); do
   # The echo is not decoration. The first CI deploy died with "Broken pipe"
@@ -126,8 +155,8 @@ for i in $(seq 1 30); do
   # went away. Keepalives on the client are the real fix; this makes the
   # symptom visible in the log if it happens again.
   echo "  health poll $i/30"
-  if curl -sf http://localhost:3140/healthz | grep -q '"status":"ok"'; then
-    echo "live and healthy:"; curl -s http://localhost:3140/healthz; echo
+  if curl -sf --connect-timeout 3 --max-time 5 http://127.0.0.1:3140/healthz | grep -q '"status":"ok"'; then
+    echo "live and healthy:"; curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:3140/healthz; echo
     exit 0
   fi
   sleep 2
