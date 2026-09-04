@@ -114,65 +114,71 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Task 44 -- the approval gate. `production` is configured in
-    # Settings -> Environments with a required reviewer, which is what makes the
-    # run pause with "Review pending deployments". Environment-scoped secrets
-    # are also unreadable by any job that has not passed the gate.
+    # Task 44 -- the approval gate. `production` is configured with a required
+    # reviewer, which is what makes the run pause on "Review pending
+    # deployments". It also does something the pause does not advertise: all
+    # four VPS secrets are scoped to THIS environment, not to the repository, so
+    # no other job -- including one added by a malicious PR -- can read the
+    # deploy key at all.
     environment:
       name: production
       url: http://169.58.246.108:3140/
     steps:
+      # Deliberately plain ssh rather than a third-party action. A marketplace
+      # action that receives the private key is one more supply-chain hop for
+      # the most sensitive secret in the repository, and here it buys nothing:
+      # the whole remote side is one forced command taking one argument.
       - name: Deploy to the swarm over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            IMAGE="ghcr.io/${{ github.repository_owner }}/notes-api:${{ needs.build-and-push.outputs.version }}"
-            echo "deploying $IMAGE"
+        env:
+          SSH_KEY:     ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST:    ${{ secrets.VPS_HOST }}
+          VPS_USER:    ${{ secrets.VPS_USER }}
+          VERSION:     ${{ needs.build-and-push.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY"     > ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
 
-            # `service update` is a ROLLING update of the existing service. It
-            # is what makes a failed deploy safe: the old tasks keep serving
-            # until the new ones are healthy, and --update-failure-action
-            # rollback puts the previous image back automatically.
-            #
-            # Deliberately NOT `docker service rm && docker service create`:
-            # that deletes the service first, so the site is down for the whole
-            # deploy and a failure leaves nothing running at all.
-            docker service update \
-              --image "$IMAGE" \
-              --update-order start-first \
-              --update-parallelism 1 \
-              --update-delay 10s \
-              --update-monitor 20s \
-              --update-failure-action rollback \
-              --with-registry-auth \
-              abdur_notes_app
+          # StrictHostKeyChecking=yes with a PINNED host key, not `no` and not
+          # `accept-new`. Both of those hand the deploy key to whoever answers
+          # on port 22 the first time. With the key pinned in a secret, a
+          # man-in-the-middle gets a refusal instead of root.
+          #
+          # The remote end is a forced command (scenario-b/deploy/abdur-deploy.sh):
+          # this string lands in SSH_ORIGINAL_COMMAND and is validated against a
+          # tag allow-list before anything runs. The key cannot open a shell --
+          # see evidence/b5-deploykey-restriction.txt.
+          ssh -n -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o ConnectTimeout=15 \
+              "$VPS_USER@$VPS_HOST" "deploy $VERSION"
 
-            docker service ps abdur_notes_app --no-trunc | head -10
-
-      - name: Verify the deployed version actually answers
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            for i in $(seq 1 30); do
-              if curl -sf http://localhost:3140/healthz | grep -q '"status":"ok"'; then
-                echo "live and healthy"
-                curl -s http://localhost:3140/healthz
-                exit 0
-              fi
-              sleep 2
-            done
-            echo "::error::deployed service did not become healthy"
-            docker service ps abdur_notes_app --no-trunc
-            exit 1
+      # An independent check, from outside the VPS. The remote script already
+      # verifies over localhost; this one goes through the published port from
+      # the public internet, so it also covers the routing mesh and the firewall
+      # -- neither of which a localhost curl on the box can see.
+      - name: Verify the new version answers from the internet
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VERSION:  ${{ needs.build-and-push.outputs.version }}
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 20); do
+            body=$(curl -sf --max-time 5 "http://$VPS_HOST:3140/healthz" || true)
+            if [ -n "$body" ]; then
+              echo "$body"
+              echo "deployed version was $VERSION"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::the service is not reachable from the internet after the deploy"
+          exit 1
 
 # ---------------------------------------------------------------------------
 # OIDC instead of stored credentials -- the Scenario C pattern, which also works

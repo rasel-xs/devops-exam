@@ -1,0 +1,29 @@
+=== B5 task 42 -- cache measurement ===
+Method: two --allow-empty commits on branch b5-pr-pipeline, so the tree is
+byte-identical between the two runs. Before the cold run, all 60 cache
+entries (~440 MiB of buildkit blobs) were deleted with 'gh cache delete --all'.
+
+COLD run: https://github.com/rasel-xs/devops-exam/actions/runs/33884738905
+WARM run: https://github.com/rasel-xs/devops-exam/actions/runs/33885130382
+
+                              cold    warm    change
+whole run                     136s     71s     -48%
+test job                       27s     34s     +26%
+  Install dependencies          2s      1s     -50%
+build-and-smoke job           106s     34s     -68%
+  Build the image              83s     12s     -86%
+
+--- cache hit evidence, warm run ---
+test  Set up Node  2026-09-04T14:41:19.6066292Z Cache hit for: node-cache-Linux-x64-npm-f71aae7679f355f987a6d38ae287d1761201c4a54ed361fb57c7b1edeba7c5f6
+test  Set up Node  2026-09-04T14:41:20.6274880Z Cache restored successfully
+test  Set up Node  2026-09-04T14:41:20.6278535Z Cache restored from key: node-cache-Linux-x64-npm-f71aae7679f355f987a6d38ae287d1761201c4a54ed361fb57c7b1edeba7c5f6
+test  Install dependencies  2026-09-04T14:41:21.0961250Z added 86 packages, and audited 87 packages in 408ms
+test  Post Set up Node  2026-09-04T14:41:21.5602634Z Cache hit occurred on the primary key node-cache-Linux-x64-npm-f71aae7679f355f987a6d38ae287d1761201c4a54ed361fb57c7b1edeba7c5f6, not saving cache.
+build-and-smoke  Build the image  2026-09-04T14:41:46.2367771Z #9 importing cache manifest from gha:14055580412264482400
+build-and-smoke  Build the image  2026-09-04T14:41:46.5484401Z #9 importing cache manifest from gha:14055580412264482400
+
+--- cold run: no cache to import ---
+test  Install dependencies  2026-09-04T14:37:10.9822705Z added 86 packages, and audited 87 packages in 1s
+test  Post Set up Node  2026-09-04T14:37:12.6606742Z Cache saved with the key: node-cache-Linux-x64-npm-f71aae7679f355f987a6d38ae287d1761201c4a54ed361fb57c7b1edeba7c5f6
+build-and-smoke  Build the image  2026-09-04T14:37:36.7043251Z #12 importing cache manifest from gha:4535595120863386947
+build-and-smoke  Build the image  2026-09-04T14:37:49.8800438Z #17 1.422 added 86 packages, and audited 87 packages in 1s

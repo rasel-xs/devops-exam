@@ -1,0 +1,41 @@
+=== B5 task 44 -- forced-command deploy key restriction test ===
+date: 2026-09-04T15:02:15Z
+key:  256 SHA256:Eu7W6MRzhmxXxM3BwLqNbriiOW+MsJ4W7s/oKaSCXPQ github-actions-abdur-deploy (ED25519)
+
+The key is installed in /root/.ssh/authorized_keys as:
+  command="/root/abdur-deploy.sh",no-port-forwarding,no-agent-forwarding,
+  no-X11-forwarding,no-pty,no-user-rc ssh-ed25519 AAAA... github-actions-abdur-deploy
+
+--- client asked for: 'whoami' ---
+refused: this key may only run 'deploy <tag>', 'status' or 'health'
+received: whoami
+    exit=1
+
+--- client asked for: 'cat /etc/shadow' ---
+refused: this key may only run 'deploy <tag>', 'status' or 'health'
+received: cat /etc/shadow
+    exit=1
+
+--- client asked for: 'deploy v9.9.9-evil' ---
+refused: tag 'v9.9.9-evil' is not v1.0.<n> or sha-<hex>
+    exit=1
+
+--- client asked for: 'deploy ../../etc/passwd' ---
+refused: tag '../../etc/passwd' is not v1.0.<n> or sha-<hex>
+    exit=1
+
+--- client asked for: 'deploy 1.0.0; id' ---
+refused: tag '1.0.0; id' is not v1.0.<n> or sha-<hex>
+    exit=1
+
+--- client asked for: 'status' ---
+ID                          NAME                    IMAGE                                                                                                   NODE         DESIRED STATE   CURRENT STATE                ERROR     PORTS
+n119v5za00c5ky5e5e4ywne2j   abdur_notes_app.1       ghcr.io/rasel-xs/notes-api:v1@sha256:d6f7c90572258529cff1cb5c5016c0887af403525c648245fc9d6c687d64e5f7   vmi3536696   Running         Running about an hour ago              
+v5qgn9v5cqx76sww68m3959a1    \_ abdur_notes_app.1   ghcr.io/rasel-xs/notes-api:v1@sha256:d6f7c90572258529cff1cb5c5016c0887af403525c648245fc9d6c687d64e5f7   vmi3536696   Shutdown        Shutdown about an hour ago             
+zap6mgma1odwhsa0f8txd7x7w    \_ abdur_notes_app.1   ghcr.io/rasel-xs/notes-api:v1@sha256:d6f7c90572258529cff1cb5c5016c0887af403525c648245fc9d6c687d64e5f7   vmi3536696   Shutdown        Shutdown about an hour ago             
+    exit=0
+
+--- client asked for: (nothing -- an interactive shell) ---
+refused: this key may only run 'deploy <tag>', 'status' or 'health'
+received: 
+    exit=1
