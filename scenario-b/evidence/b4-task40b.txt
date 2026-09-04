@@ -1,0 +1,70 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 16:12:00 CEST 2026
+=== 1. 5 e scale ===
+abdur_notes_app scaled to 5
+  16:12:08 replicas=3/5
+  16:12:17 replicas=5/5
+
+=== 2. scale-down er age ja cholche ===
+d009642fa4c9|abdur_notes_app.4.fhpw9ocwxbbmlk1l77541l8dx
+1525c547e379|abdur_notes_app.5.1c8wacdfwnd0m3xxklfrtzmof
+2e0acaa4c558|abdur_notes_app.3.vkk6ig9p9vgx45xrsjdd8q9ls
+014fff66f2fa|abdur_notes_app.1.n119v5za00c5ky5e5e4ywne2j
+5adf2c7cad10|abdur_notes_app.2.u4c590oxyxaokhq6hu0ll6ibe
+
+=== 3. 3 ta pinned client -- ekta kore socket, 400 request @10/s ===
+  started at 16:12:18.574, pids: 2031992 2031993 2031994
+
+=== 4. SCALE 5 -> 2 ===
+  issued at 16:12:33.809
+abdur_notes_app scaled to 2
+  16:12:36.875 replicas=5/2 live_containers=5
+  16:12:39.514 replicas=5/2 live_containers=5
+  16:12:41.791 replicas=2/2 live_containers=2
+  converged at 16:12:41.801
+
+=== 5. je container gulo SORANO holo -- SIGTERM handle korlo ki? ===
+--- abdur_notes_app.4.fhpw9ocwxbbmlk1l77541l8dx : SORANO HOYECHE
+
+    (container muche fela hoyeche)
+--- abdur_notes_app.5.1c8wacdfwnd0m3xxklfrtzmof : SORANO HOYECHE
+
+    (container muche fela hoyeche)
+--- abdur_notes_app.3.vkk6ig9p9vgx45xrsjdd8q9ls : SORANO HOYECHE
+
+    (container muche fela hoyeche)
+--- abdur_notes_app.1.n119v5za00c5ky5e5e4ywne2j : EKHONO CHOLCHE (survivor)
+--- abdur_notes_app.2.u4c590oxyxaokhq6hu0ll6ibe : EKHONO CHOLCHE (survivor)
+
+=== 6. FOLAFOL (T0=16:12:33.809) ===
+--- client 1 : 400 line ---
+  status:
+         400 200
+  socket:
+         398 conn=0
+           2 conn=1
+  kon container serve korlo (poroporo run):
+         138 "host":"1525c547e379"
+         262 "host":"014fff66f2fa"
+  non-200:
+--- client 2 : 400 line ---
+  status:
+         400 200
+  socket:
+         398 conn=0
+           2 conn=1
+  kon container serve korlo (poroporo run):
+         150 "host":"d009642fa4c9"
+         250 "host":"5adf2c7cad10"
+  non-200:
+--- client 3 : 400 line ---
+  status:
+         400 200
+  socket:
+         399 conn=0
+           1 conn=1
+  kon container serve korlo (poroporo run):
+         400 "host":"5adf2c7cad10"
+  non-200:
+
+=== 7. 3 e fera ===
+abdur_notes_app scaled to 3

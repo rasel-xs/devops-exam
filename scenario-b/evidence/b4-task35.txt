@@ -1,0 +1,72 @@
+
+############ TASK 35  deploy the stack ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 14:53:34 CEST 2026
+
+--- 1. build the three images ---
+sha256:70984adef4b35115e93311161c3396b38fd59cd07d05e9261b73bc4ad6e64d7a
+sha256:3065912d90af5ffdd9f3fcd132551ff5450e98be209122a555efe57be40254a5
+ghcr.io/rasel-xs/notes-api:v1   d6f7c9057225        207MB         50.5MB   U    
+ghcr.io/rasel-xs/notes-api:v2   70984adef4b3        207MB         50.5MB        
+ghcr.io/rasel-xs/notes-api:v3   3065912d90af        207MB         50.5MB        
+
+--- 2. push all three to GHCR ---
+  pushing ghcr.io/rasel-xs/notes-api:v1
+ghcr.io/rasel-xs/notes-api:v1
+  pushing ghcr.io/rasel-xs/notes-api:v2
+ghcr.io/rasel-xs/notes-api:v2
+  pushing ghcr.io/rasel-xs/notes-api:v3
+ghcr.io/rasel-xs/notes-api:v3
+
+--- 3. confirm they are really in the registry, not just local ---
+  v1   present in registry
+  v2   present in registry
+  v3   present in registry
+
+--- 4. swarm init ---
+Swarm initialized: current node (krmj8bc57xasj0o4k2depeemg) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join --token SWMTKN-<REDACTED-AND-ROTATED> 169.58.246.108:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+
+--- 5. docker node ls   [TASK 35 DELIVERABLE] ---
+ID                            HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS   ENGINE VERSION
+krmj8bc57xasj0o4k2depeemg *   vmi3536696   Ready     Active         Leader           29.7.2
+
+--- 6. deploy the stack ---
+Since --detach=false was not specified, tasks will be created in the background.
+In a future release, --detach=false will become the default.
+Creating network abdur_notes_notes_net
+Creating service abdur_notes_postgres
+Creating service abdur_notes_app
+
+--- 7. wait for convergence ---
+  14:54:15  abdur_notes_app 0/3 abdur_notes_postgres 0/1 
+  14:54:20  abdur_notes_app 0/3 abdur_notes_postgres 1/1 
+  14:54:25  abdur_notes_app 0/3 abdur_notes_postgres 1/1 
+  14:54:30  abdur_notes_app 3/3 abdur_notes_postgres 1/1 
+
+--- 8. docker stack services   [TASK 35 DELIVERABLE] ---
+ID             NAME                   MODE         REPLICAS   IMAGE                           PORTS
+1cl4iz2qln69   abdur_notes_app        replicated   3/3        ghcr.io/rasel-xs/notes-api:v1   *:3140->3000/tcp
+uyd0zo4fhedg   abdur_notes_postgres   replicated   1/1        postgres:16-alpine              
+
+--- 9. where each task actually landed ---
+NAME                NODE         CURRENT STATE          ERROR
+abdur_notes_app.1   vmi3536696   Running 1 second ago   
+abdur_notes_app.2   vmi3536696   Running 1 second ago   
+abdur_notes_app.3   vmi3536696   Running 1 second ago   
+
+--- 10. does it answer? ---
+HTTP/1.1 200 OK
+X-Served-By: 7cce466a4db8
+X-App-Version: v1
+Content-Type: application/json; charset=utf-8
+Content-Length: 52
+Date: Fri, 04 Sep 2026 12:54:36 GMT
+Connection: close
+
+
+############ task 35 complete ############

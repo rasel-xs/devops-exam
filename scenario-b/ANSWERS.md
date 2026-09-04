@@ -1702,79 +1702,325 @@ mount, a secret — survives an image roll untouched.
 
 ### Task 38 — Break v3 and roll back
 
-`docker/Dockerfile.v3broken` sets `BREAK_HEALTHZ=1`, so `/healthz` returns 500,
-the container healthcheck never passes, the task never reaches `healthy`, and
-`failure_action: rollback` puts v2 back.
+`docker/Dockerfile.v3broken` sets `BREAK_HEALTHZ=1`, so `/healthz` returns 500.
+The process starts perfectly and keeps running — it just answers wrongly. That
+choice is deliberate: an image that *exits* would be caught by the restart
+policy and would prove nothing about health checking.
 
-- `docker service ps` during the failure: `evidence/b4-v3-failed.png`
-- back on v2 afterwards: `evidence/b4-rolled-back.png`
-- `UpdateStatus` showing `rollback_completed`: `evidence/b4-rollback-status.png`
-- **Time from deploy to full rollback: `<<FILL: e.g. 1m48s>>`**, from the
-  timestamps in `docker service ps`. It is roughly
-  `monitor (20s) + healthcheck retries (3 × 5s + start_period 10s) + rollback
-  delay`, per failing task.
+`docker/b4-task38.sh` runs the experiment as a **controlled pair**, because the
+brief's question ("what if there were no healthcheck?") is answerable by
+measurement rather than assertion. Same broken image, same traffic loop, one
+variable changed.
 
-**What if the image had no healthcheck?** Swarm would **not** have noticed.
-Without one, a task is `running` — and therefore "successful" — as soon as its
-process starts, and a broken `/healthz` is just an endpoint returning 500 that
-nothing is asking about. The update would complete normally, report success, and
-roll 500s out to all five replicas. `failure_action: rollback` would never
-trigger, because from Swarm's point of view nothing failed.
+#### Phase A — v3 with the healthcheck (`evidence/b4-task38.txt`)
 
-That is the general lesson and it is the same one as Scenario A task 15: an
-orchestrator can only detect what you have told it to measure. A restart policy
-answers "is the process alive?"; only a healthcheck answers "is it working?".
-It would only have been caught if the app *crashed* on startup — which is why I
-deliberately broke v3 by failing the healthcheck rather than by exiting, since
-an exit would have been caught by the restart policy and would have proved
-nothing about health.
+```
+UpdateStatus.StartedAt     2026-09-04T13:37:34.504Z
+UpdateStatus.CompletedAt   2026-09-04T13:38:07.955Z
+UpdateStatus.State         rollback_completed
+UpdateStatus.Message       rollback completed
+final                      abdur_notes_app  5/5  notes-api:v2
+clients during the deploy  124 requests  /  124 × 200  /  124 × v2
+```
+
+**Deploy to full rollback: 33.45 s.** The arithmetic: `parallelism: 1` means one
+v3 task at a time, `monitor: 20s` is the window it must stay healthy through,
+and `start_period: 10s` plus three 5-second retries is how long the healthcheck
+takes to give up — the task never went healthy, `max_failure_ratio: 0` made one
+failure enough, and `failure_action: rollback` reversed it.
+
+**Clients saw nothing.** 124 responses, every one a 200 from v2. That is
+`order: start-first` doing exactly what it exists for: the replacement is only
+added to the routing mesh once it reports **healthy**, so a task that never
+reaches healthy never receives a single request. The failure was contained to
+the orchestrator; it never reached a user.
+
+#### Phase B — the identical image with `--no-healthcheck`
+
+```
+UpdateStatus.State         completed
+UpdateStatus.Message       update completed
+final                      abdur_notes_app  5/5  notes-api:v3
+curl /healthz              500  {"status":"deliberately broken (v3)","version":"v3-broken"}
+clients during the deploy  327 requests  /  184 × 500  /  135 × 200  /  8 × 000
+```
+
+**Swarm reported `update completed` for a service failing 59% of its requests**
+(192 of 327 counting the 8 connection failures). No rollback, no warning, no
+failed task — because from Swarm's point of view nothing failed.
+
+The two numbers next to each other are the whole answer:
+
+| | healthcheck | `--no-healthcheck` |
+|---|---|---|
+| Swarm's verdict | `rollback_completed` | `completed` |
+| Time | 33 s | 103 s |
+| Requests failed | **0 of 124** | **192 of 327** |
+| Ended on | v2 (working) | v3 (broken) |
+
+**The broken deploy took three times longer to "succeed" than the working
+rollback took to fail.** Failing fast is a feature of having told the
+orchestrator what "working" means.
+
+#### The `Failed`/`Rejected` screenshot — and why it does not exist
+
+The brief asks for `docker service ps` showing tasks in `Failed` or `Rejected`
+state. **I did not capture one, because no task ever entered those states.** My
+poll ran every 5 seconds through both phases and printed `failed/rejected: 0`
+every time. Checking the task history afterwards
+(`evidence/b4-task38-failed-tasks.txt`) confirms it rather than blaming the
+sampling rate:
+
+```
+--- v3 task status ---
+"State": "shutdown",  "Message": "shutdown",  "ContainerStatus": { "ExitCode": 0 }
+```
+
+**Exit code 0.** Even the deliberately broken containers terminated cleanly.
+`Failed` means the container died; `Rejected` means a node refused to run it.
+Neither describes what happened here — v3 started fine, ran fine, and answered
+every request with a 500. Swarm shut the Phase A task down as part of the
+rollback, which is a `shutdown`, not a failure.
+
+That is the finding, not a gap in the evidence: **an application-level failure
+does not produce a container-level failure state.** If I had gone looking for
+`Failed` tasks as my signal that a deploy went wrong, I would have found none in
+either phase — including the phase where 59% of requests were failing.
+`UpdateStatus.State` and the healthcheck are what distinguished them.
+
+(Phase A's rolled-back v3 task is no longer in the history above: it ran on slot
+4 or 5, and the restoring `stack deploy` returned the service to `replicas: 3`,
+removing those slots and their history with them. The three v3 entries shown are
+Phase B's.)
+
+#### The general lesson
+
+Same as Scenario A task 15: **an orchestrator can only detect what you have told
+it to measure.** A restart policy answers "is the process alive?"; only a
+healthcheck answers "is it working?". Phase B is what "alive" alone buys you — a
+green deployment, five healthy-looking replicas, and a 500 for every user.
+
+One caveat on Phase A worth stating: the rollback was clean *because the
+healthcheck was honest*. `/healthz` here is liveness-only — B2 task 26 showed it
+reporting healthy for 3.0 s while the database was still initialising. A
+healthcheck that lies passes the update, and Phase A becomes Phase B.
 
 ### Task 39 — Limits vs reservations
 
-`docker service update --reserve-memory 8G notes_app` on a `<<FILL: 2>>`GB node:
+The brief asks for one impossible reservation. `docker/b4-task39.sh` asks for
+the **same impossible number both ways**, because the interesting claim is not
+"16G fails" — it is that limits and reservations are enforced by two different
+pieces of software, at two different times, and therefore fail differently.
+
+Node capacity, as Swarm sees it (`evidence/b4-task39.txt`):
 
 ```
-<<FILL: docker service ps notes_app --no-trunc
-        -> "no suitable node (insufficient resources on 1 node)", state Pending>>
+host=vmi3536696  nanocpus=4000000000  membytes=8326938624
+  schedulable memory = 7.76 GiB
 ```
 
-**The difference.**
+#### Phase A — `--limit-memory 16G` on a 7.76 GiB node
 
-- A **limit** is a runtime ceiling, enforced by the kernel through cgroups. The
+```
+state=completed
+memory.max = 17179869184  (= 16.00 GiB)      <- read from inside the container
+```
+
+**Accepted without a murmur.** Docker set a 16 GiB cgroup ceiling on a machine
+with 7.76 GiB of RAM, the update rolled out normally, and the service kept
+serving. A limit is never compared against the node's capacity, because it is
+not a claim on anything — it is a ceiling, and a ceiling above the roof is
+merely useless.
+
+#### Phase B — `--reserve-memory 16G`, identical number
+
+```
+ID            NAME                NODE         DESIRED   CURRENT    ERROR
+pnlkizm2x1df  abdur_notes_app.3   (empty)      Running   Pending    "no suitable node (insufficient resources on 1 node)"
+
+Status: { "State": "pending",
+          "Message": "pending task scheduling",
+          "Err": "no suitable node (insufficient resources on 1 node)" }
+DesiredState "running"   NodeID ""
+
+UpdateStatus: { "State": "updating", "Message": "update in progress" }
+```
+
+Three details in there are the whole answer:
+
+1. **`NodeID` is empty, and `docker node ps self` does not list the task.** It
+   was never assigned to a machine. Nothing was started and nothing was killed.
+2. **`DesiredState` is `Running`, `CurrentState` is `Pending`** — Swarm still
+   intends to run it and is waiting for a node that will never appear.
+3. **`UpdateStatus.State` stayed `updating`.** Not `paused`, not `rollback` —
+   `failure_action: rollback` never fires, because from Swarm's point of view
+   nothing has failed yet. Phase A completed in 80 s and the undo in 64 s; this
+   one would have sat there indefinitely.
+
+#### The difference
+
+- A **limit** is a runtime ceiling enforced by the kernel through cgroups. The
   container physically cannot exceed it: past the memory limit the OOM killer
-  ends it (exit 137, task 28a); past the CPU limit it is throttled. A limit
+  ends it (exit 137, B2 task 28a); past the CPU limit it is throttled. A limit
   protects *other* workloads from this container.
-- A **reservation** is a *scheduling* promise, and nothing else. Swarm will only
-  place the task on a node with that much unclaimed capacity, and subtracts it
-  from that node's available pool for future placement decisions. It does not
-  reserve any memory at runtime, does not guarantee the memory is actually
-  available later, and does not constrain the container's behaviour in any way.
-  A reservation protects *this* container from being scheduled somewhere it
-  cannot fit.
+- A **reservation** is a *scheduling* promise and nothing else. Swarm places the
+  task only on a node with that much unclaimed capacity and subtracts it from
+  that node's pool for future decisions. It hands the container no memory, does
+  not guarantee the memory will be free later, and constrains the running
+  process in no way at all. A reservation protects *this* container from being
+  scheduled where it cannot fit.
 
-What I observed makes the distinction concrete: with an 8G reservation the task
-is not killed, not started, not failed — it sits **Pending** with "no suitable
-node", because the scheduler has nowhere to put it. Compare task 28a, where a
-50M *limit* let the task start and then had the kernel kill it. Pending versus
-OOMKilled is the clearest way to tell which one you configured.
+`Pending` versus `OOMKilled` is the fastest way to tell which one you actually
+configured.
 
-The trap: reservations are what actually cause "my service will not start and
-there is no error". Nothing crashed; the scheduler simply has no candidate node
-and will wait forever. And over-reserving quietly wastes a cluster — every node
-looks full while sitting idle.
+#### Two things worth adding
+
+**Reservations are bookkeeping, not measurement.** During this run `free -g`
+reported ~5 GiB actually available while Swarm called 7.76 GiB schedulable — it
+never looked at real usage. It only sums the reservations it has already
+granted. So a cluster of services that all reserve `128M` while each really
+using 2 GiB will be scheduled cheerfully onto one node, and then die of OOM with
+Swarm insisting there is plenty of room. Reservations are only as honest as the
+numbers you put in them.
+
+**A stuck deploy is not a broken service.** The traffic loop ran through both
+phases: **164 requests, all 200, zero failures.** With `order: start-first` the
+old task is retired only after the replacement is healthy — and a replacement
+that is never even placed can never trigger that retirement. This is the
+"service will not start and there is no error" failure mode: the symptom is not
+an outage, it is a deployment that silently never finishes. `UpdateStatus.State`
+is the only place it shows, which is why it belongs in a deploy script's exit
+check and not just in a human's terminal.
+
+**One caveat, honestly.** The first run of `b4-task39.sh` did not capture the
+Pending task at all: `head -6` on the `service ps` output was consumed by old
+`Shutdown` entries, and I had filtered on `--filter desired-state=ready`, which
+was simply a wrong guess — a Pending task's desired state is `Running`, as the
+output above shows. The re-run (`docker/b4-task39b.sh`,
+`evidence/b4-task39b.txt`) drops both the filter and the truncation. The lesson
+is the same one as B3's grep failures: a filter that returns nothing looks
+exactly like a system that did nothing.
 
 ### Task 40 — Scale down under traffic
 
-5 → 2 with the loop running:
+Counting failures alone would not have explained anything, so the client is
+split the same way as task 36, because task 36 established the fact that makes
+scale-down interesting: **the routing mesh balances per connection, not per
+request.** That predicts two different experiences of the same event.
+
+- **Client A** — `Connection: close`, a fresh TCP connection per request. The
+  mesh re-picks a task every time, so it should never be handed one that is
+  going away.
+- **Client B** — one `curl` process, **one socket**, 400 requests at 10/s. This
+  client is pinned to a single task. If that task is one of the three being
+  removed, it is holding a socket to a process that is shutting down.
+
+**Result across both runs: 2116 requests, 2116 × 200, zero failures.**
+
+#### Client A — `evidence/b4-task40.txt`
 
 ```
-<<FILL: uniq -c output>>
+916 requests   916 × 200   0 failures
+scale issued   16:08:00.767
+converged      16:08:11.812      (11.0s)
 ```
 
-Failures: `<<FILL>>`. Same mechanics as the rolling update: the tasks being
-removed get SIGTERM and `stop_grace_period` to drain, so a graceful shutdown
-handler is what keeps this near zero, while mesh convergence accounts for the
-remainder.
+The first request after the scale command landed at `16:08:00.833`, 66 ms later,
+and returned 200. There is no gap anywhere in the log.
+
+#### Client B — `evidence/b4-task40b.txt`, three pinned sockets
+
+| client | pinned to | removed? | socket change | ended on | failures |
+|---|---|---|---|---|---|
+| 1 | `1525c547e379` (task .5) | **yes** | 138 → `conn=1` → 262 | `014fff66f2fa` (.1) | 0 |
+| 2 | `d009642fa4c9` (task .4) | **yes** | 150 → `conn=1` → 250 | `5adf2c7cad10` (.2) | 0 |
+| 3 | `5adf2c7cad10` (task .2) | no | **never** — `conn=1` once, the initial connect | same | 0 |
+
+Two of the three sockets were pinned to a task that was about to be deleted, and
+**both migrated to a survivor without losing a single request.** Client 3 is the
+control that makes the other two mean something: a client whose task survived
+never reconnected at all, across 400 requests on one socket. So the reconnects
+in clients 1 and 2 were caused by the scale-down and by nothing else.
+
+The timing lines up to within a second. Client 1's 138th request lands at
+≈ `16:12:32.4` and client 2's 150th at ≈ `16:12:33.6`, against a scale command
+at `16:12:33.809`.
+
+**The mechanism:** `server.close()` (`app/src/server.js:298`) stops accepting new
+connections but lets in-flight requests finish, and Node then marks its
+responses `Connection: close`, which is what forces the pinned client to open a
+fresh connection — and the fresh connection goes through the mesh, which now
+only knows about survivors. The client never sees the transition as an error
+because the last response on the dying socket is a normal 200.
+
+#### Was the SIGTERM handler actually the reason?
+
+Two independent pieces of evidence, because the first one is only circumstantial.
+
+**Circumstantial — the drain was far too fast to be a timeout.**
+`stop_grace_period: 30s`, but the containers were gone in ~8 s (run 2) and ~11 s
+(run 3). B2 task 28 established that **the kernel applies no default signal
+action to PID 1**: an unhandled SIGTERM to a PID-1 process does nothing at all.
+So had nothing been listening, every container would have sat there for the full
+30 seconds and then been SIGKILLed. Exiting early is only possible if something
+handled the signal.
+
+**Direct — the log line, caught live (`evidence/b4-task40c.txt`):**
+
+```
+abdur_notes_app.3.uxan6k86w5bc | {"level":"info","msg":"shutting down","signal":"SIGTERM"}
+```
+
+#### Three things that went wrong on the way, and what they cost
+
+**1. The first Client B did not test what I claimed it tested.** It ran 40
+requests per `curl` process and looped — a new process each second, therefore a
+new socket each second (`conn=0: 1248, conn=1: 32`, exactly one connect per
+batch). The socket only ever lived ~1 s, so it could not have straddled the
+scale-down. The re-run with a single long-lived `curl --rate 10/s` is the one
+that answers the question.
+
+**2. `-o /dev/null` only applies to the first URL.** With 40 URLs and one `-o`,
+curl wrote 39 response bodies to stdout, which concatenated with `-w` output into
+lines like `{"status":"ok",...}200`. My "non-200" report then listed lines that
+were all, in fact, 200s. The parse was broken, not the service.
+
+**3. The stopped/running detection was inverted.** `while read -r _ cid name`
+against a list with leading spaces put the *name* into `$cid`, so the `docker ps`
+membership test never matched and all five containers were reported STOPPED —
+and the two whose logs printed were the two **survivors**. Every field in that
+section was wrong while looking entirely plausible.
+
+All three are the same failure: **a measurement that returns something is not the
+same as a measurement that is measuring the right thing.** Client 3 exists
+precisely because a control makes that detectable.
+
+#### Two operational findings the brief did not ask for
+
+**Scaling down is an order of magnitude faster than scaling up.** 11 s here
+against 124 s for the rolling update in task 37 — because removing a task waits
+for nothing, while adding one waits for a healthcheck. This asymmetry is why a
+service under a traffic spike sheds capacity instantly and regains it slowly.
+
+**A scaled-down task's container is deleted immediately.** The follow-up tried
+`docker logs`/`docker inspect` on the three removed containers and got
+`No such container` for all three — there is no post-mortem to do on the host.
+Anything you need from a task that goes away has to have been shipped off the
+box before it went. That is also why the log line above had to be captured with
+`docker service logs --follow` started *before* the scale command.
+
+**And a smaller trap worth recording.** `docker service logs --since 15m | grep
+'shutting down'` returned nothing, which looked like "the handler never ran". The
+real cause was leftover state from task 39:
+
+```
+error from daemon in stream: ... task pnlkizm2x1df... has not been scheduled
+```
+
+The Pending tasks from the 16G reservation experiment made the daemon abort the
+whole log stream after 4 lines. The grep was not reporting on the service at all.
+Checking `wc -l` before trusting a `grep` is the same discipline B3 forced three
+times over.
 
 ---
 

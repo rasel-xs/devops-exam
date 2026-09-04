@@ -1,0 +1,109 @@
+
+############ TASK 38  break v3, let swarm roll back ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:37:25 CEST 2026
+
+--- starting state (should be v2, 5/5) ---
+NAME              REPLICAS   IMAGE
+abdur_notes_app   5/5        ghcr.io/rasel-xs/notes-api:v2
+
+############ PHASE A -- v3 WITH the healthcheck ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:37:25 CEST 2026
+
+--- deploy the broken image ---
+  t0 = 15:37:33
+abdur_notes_app
+
+--- poll -- watching for Failed / Rejected tasks and the rollback ---
+  15:37:36  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:37:41  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:37:47  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:37:52  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:37:57  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:38:04  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:38:09  state=rollback_completed   running:       5 v2       failed/rejected: 0
+
+--- UpdateStatus   [TASK 38 DELIVERABLE] ---
+{
+    "State": "rollback_completed",
+    "StartedAt": "2026-09-04T13:37:34.504339125Z",
+    "CompletedAt": "2026-09-04T13:38:07.955486969Z",
+    "Message": "rollback completed"
+}
+
+--- final state -- should be back on v2   [TASK 38 DELIVERABLE] ---
+NAME              REPLICAS   IMAGE
+abdur_notes_app   5/5        ghcr.io/rasel-xs/notes-api:v2
+NAME                IMAGE                           CURRENT STATE
+abdur_notes_app.1   notes-api:v2   Running 6 minutes ago
+abdur_notes_app.2   notes-api:v2   Running 4 minutes ago
+abdur_notes_app.3   notes-api:v2   Running 4 minutes ago
+abdur_notes_app.4   notes-api:v2   Running 5 minutes ago
+abdur_notes_app.5   notes-api:v2   Running 5 minutes ago
+
+--- timing   [TASK 38 DELIVERABLE] ---
+StartedAt:   2026-09-04 13:37:34.504339125 +0000 UTC
+CompletedAt: 2026-09-04 13:38:07.955486969 +0000 UTC
+  wall clock from my command to the poll seeing it finish: 36s
+
+--- what did clients see during the failed deploy? ---
+        124 200
+        124 v2
+
+############ PHASE B -- the same broken image, WITHOUT a healthcheck ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:38:11 CEST 2026
+  This is the brief's question, answered by experiment: if the image had
+  no healthcheck, would Swarm have noticed that v3 is broken?
+
+--- deploy v3 again, with the healthcheck disabled ---
+  t2 = 15:38:19
+abdur_notes_app
+
+--- poll ---
+  15:38:20  state=updating             running:       5 v2       1 v3  failed/rejected: 0
+  15:38:25  state=updating             running:       4 v2       1 v3  failed/rejected: 0
+  15:38:30  state=updating             running:       4 v2       1 v3  failed/rejected: 0
+  15:38:36  state=updating             running:       4 v2       2 v3  failed/rejected: 0
+  15:38:42  state=updating             running:       3 v2       2 v3  failed/rejected: 0
+  15:38:48  state=updating             running:       3 v2       2 v3  failed/rejected: 0
+  15:38:53  state=updating             running:       3 v2       3 v3  failed/rejected: 0
+  15:38:58  state=updating             running:       2 v2       3 v3  failed/rejected: 0
+  15:39:05  state=updating             running:       2 v2       3 v3  failed/rejected: 0
+  15:39:10  state=updating             running:       2 v2       4 v3  failed/rejected: 0
+  15:39:16  state=updating             running:       1 v2       4 v3  failed/rejected: 0
+  15:39:22  state=updating             running:       1 v2       4 v3  failed/rejected: 0
+  15:39:27  state=updating             running:       1 v2       5 v3  failed/rejected: 0
+  15:39:33  state=updating             running:       5 v3       failed/rejected: 0
+  15:39:39  state=updating             running:       5 v3       failed/rejected: 0
+  15:39:44  state=updating             running:       5 v3       failed/rejected: 0
+  15:39:50  state=updating             running:       5 v3       failed/rejected: 0
+  15:39:55  state=updating             running:       5 v3       failed/rejected: 0
+  15:40:02  state=completed            running:       5 v3       failed/rejected: 0
+
+--- UpdateStatus after the no-healthcheck deploy ---
+{
+    "State": "completed",
+    "StartedAt": "2026-09-04T13:38:19.524112598Z",
+    "CompletedAt": "2026-09-04T13:39:58.529143565Z",
+    "Message": "update completed"
+}
+
+--- what is actually running, and does it work? ---
+NAME              REPLICAS   IMAGE
+abdur_notes_app   5/5        ghcr.io/rasel-xs/notes-api:v3
+  curl /healthz -> 500
+  body: {"status":"deliberately broken (v3)","version":"v3-broken"}
+
+--- what clients saw   [the point of phase B] ---
+        184 500
+        135 200
+          8 000
+
+--- restore: redeploy the stack, which puts the healthcheck and v1 back ---
+Since --detach=false was not specified, tasks will be created in the background.
+In a future release, --detach=false will become the default.
+Updating service abdur_notes_postgres (id: uyd0zo4fhedga0qei1qbu7yda)
+Updating service abdur_notes_app (id: 1cl4iz2qln6979kut9vshw4af)
+NAME              REPLICAS   IMAGE
+abdur_notes_app   3/3        ghcr.io/rasel-xs/notes-api:v1
+
+############ task 38 complete ############

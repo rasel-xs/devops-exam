@@ -1,0 +1,54 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:58:37 CEST 2026
+reserve 16G issued at 15:58:37
+
+=== PURNO service ps -- kono head, kono filter nei ===
+ID                          NAME                    NODE         DESIRED STATE   CURRENT STATE             ERROR
+n119v5za00c5ky5e5e4ywne2j   abdur_notes_app.1       vmi3536696   Running         Running 4 minutes ago     
+v5qgn9v5cqx76sww68m3959a1    \_ abdur_notes_app.1   vmi3536696   Shutdown        Shutdown 4 minutes ago    
+zap6mgma1odwhsa0f8txd7x7w    \_ abdur_notes_app.1   vmi3536696   Shutdown        Shutdown 6 minutes ago    
+xoj3h3auuekbgrrctvoljhvd6    \_ abdur_notes_app.1   vmi3536696   Shutdown        Shutdown 18 minutes ago   
+u4c590oxyxaokhq6hu0ll6ibe   abdur_notes_app.2       vmi3536696   Running         Running 4 minutes ago     
+hqzfysoseg398dfqavb8nxlzr    \_ abdur_notes_app.2   vmi3536696   Shutdown        Shutdown 4 minutes ago    
+ecgw6aqqtgft6f5hggmr0j0mv    \_ abdur_notes_app.2   vmi3536696   Shutdown        Shutdown 6 minutes ago    
+v9y3phf1ohlbhwk9fh17e292v    \_ abdur_notes_app.2   vmi3536696   Shutdown        Shutdown 18 minutes ago   
+pnlkizm2x1dfy17dchjyrhbbc   abdur_notes_app.3                    Running         Pending 20 seconds ago    "no suitable node (insufficient resources on 1 node)"
+owjzg5dii5gaim23f8a1lhd6b    \_ abdur_notes_app.3   vmi3536696   Running         Running 4 minutes ago     
+i42tz5ftnc8wy5d41du8dt31e    \_ abdur_notes_app.3                Shutdown        Shutdown 4 minutes ago    
+7l6jedda42ovbvhxl9cs3semw    \_ abdur_notes_app.3   vmi3536696   Shutdown        Shutdown 4 minutes ago    
+
+=== sudhu je task gulo Running noy ===
+pnlkizm2x1dfy17dchjyrhbbc abdur_notes_app.3 Pending 20 seconds ago "no suitable node (insufficient resources on 1 node)"
+
+=== Pending task-er raw Status ===
+--- pnlkizm2x1df ---
+{
+    "Timestamp": "2026-09-04T13:58:37.123299044Z",
+    "State": "pending",
+    "Message": "pending task scheduling",
+    "Err": "no suitable node (insufficient resources on 1 node)",
+    "PortStatus": {}
+}
+"running"""
+
+=== node e boshano task (Pending task ekhane thakbe na) ===
+NAME                         CURRENT STATE
+abdur_notes_app.1            Running 4 minutes ago
+ \_ abdur_notes_app.1        Shutdown 4 minutes ago
+ \_ abdur_notes_app.1        Shutdown 6 minutes ago
+ \_ abdur_notes_app.1        Shutdown 18 minutes ago
+abdur_notes_app.2            Running 4 minutes ago
+ \_ abdur_notes_app.2        Shutdown 4 minutes ago
+ \_ abdur_notes_app.2        Shutdown 6 minutes ago
+
+=== UpdateStatus ===
+{
+    "State": "updating",
+    "StartedAt": "2026-09-04T13:58:37.066646948Z",
+    "Message": "update in progress"
+}
+
+=== undo ===
+  15:59:09 state=updating 3/3
+  15:59:19 state=updating 3/3
+  15:59:30 state=completed 3/3
+{"NanoCPUs":100000000,"MemoryBytes":134217728}

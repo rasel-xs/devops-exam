@@ -1,0 +1,23 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 16:17:55 CEST 2026
+=== 1. service logs ki adou kichu dey? (grep er age sanity check) ===
+4
+abdur_notes_app.3.uxan6k86w5bc@vmi3536696    | {"level":"info","msg":"listening","host":"b6ec1d95fdd9","port":3000,"version":"v1","pid":1}
+error from daemon in stream: Error grabbing logs: rpc error: code = Unknown desc = warning: incomplete log stream. some logs could not be retrieved for the following reasons: task i42tz5ftnc8wy5d41du8dt31e has not been scheduled, task pnlkizm2x1dfy17dchjyrhbbc has not been scheduled
+
+
+=== 2. ebar LIVE dhora: log follow kore rekhe scale down kori ===
+age: 3/3
+  scale 3 -> 2 at 16:17:58.964
+abdur_notes_app scaled to 2
+  16:18:02.756 live_containers=3
+  16:18:05.618 live_containers=3
+  16:18:10.234 live_containers=2
+
+=== 3. log e ki elo ===
+  mot line: 1
+  >>> abdur_notes_app.3.uxan6k86w5bc@vmi3536696    | {"level":"info","msg":"shutting down","signal":"SIGTERM"}
+  --- ses 8 line ---
+  abdur_notes_app.3.uxan6k86w5bc@vmi3536696    | {"level":"info","msg":"shutting down","signal":"SIGTERM"}
+
+=== 4. 3 e fera ===
+abdur_notes_app scaled to 3

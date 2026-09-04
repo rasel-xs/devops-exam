@@ -1,0 +1,115 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:51:45 CEST 2026
+
+=== 1. Swarm node e koto resource dekhe ===
+host=vmi3536696  nanocpus=4000000000  membytes=8326938624
+  schedulable memory = 7.76 GiB
+               total        used        free      shared  buff/cache   available
+Mem:               7           1           4           0           1           5
+
+=== 2. ekhonkar Resources spec ===
+{
+    "Limits": {
+        "NanoCPUs": 500000000,
+        "MemoryBytes": 268435456
+    },
+    "Reservations": {
+        "NanoCPUs": 100000000,
+        "MemoryBytes": 134217728
+    }
+}
+
+=== 3. traffic loop chalu ===
+
+############ PHASE A: LIMIT 16G (cgroup cap, node capacity er cheye boro) ############
+abdur_notes_app
+issued at 15:51:48
+  15:52:03  limit16G  state=updating  replicas=4/3
+  15:52:13  limit16G  state=updating  replicas=3/3
+  15:52:25  limit16G  state=updating  replicas=3/3
+  15:52:36  limit16G  state=updating  replicas=3/3
+  15:52:47  limit16G  state=updating  replicas=4/3
+  15:52:57  limit16G  state=updating  replicas=3/3
+  15:53:08  limit16G  state=completed  replicas=3/3
+--- container er bhitor cgroup ki bolche? ---
+  memory.max = 17179869184  (= 16.00 GiB)
+abdur_notes_app.1 Running Running about a minute ago
+abdur_notes_app.1 Shutdown Shutdown 57 seconds ago
+abdur_notes_app.1 Shutdown Shutdown 12 minutes ago
+abdur_notes_app.1 Shutdown Shutdown 14 minutes ago
+
+############ PHASE B: RESERVE 16G (scheduler ke 16G khuje dite hobe) ############
+abdur_notes_app
+issued at 15:53:09
+--- 15:53:19 ---
+ls: abdur_notes_app 3/3
+abdur_notes_app.1  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 12 minutes ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 14 minutes ago  err=
+abdur_notes_app.2  desired=Running  current=Running 41 seconds ago  err=
+abdur_notes_app.2  desired=Shutdown  current=Shutdown 29 seconds ago  err=
+--- 15:53:29 ---
+ls: abdur_notes_app 3/3
+abdur_notes_app.1  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 13 minutes ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 15 minutes ago  err=
+abdur_notes_app.2  desired=Running  current=Running 52 seconds ago  err=
+abdur_notes_app.2  desired=Shutdown  current=Shutdown 40 seconds ago  err=
+--- 15:53:40 ---
+ls: abdur_notes_app 3/3
+abdur_notes_app.1  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 13 minutes ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 15 minutes ago  err=
+abdur_notes_app.2  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.2  desired=Shutdown  current=Shutdown 50 seconds ago  err=
+--- 15:53:51 ---
+ls: abdur_notes_app 3/3
+abdur_notes_app.1  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 13 minutes ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 15 minutes ago  err=
+abdur_notes_app.2  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.2  desired=Shutdown  current=Shutdown about a minute ago  err=
+--- 15:54:04 ---
+ls: abdur_notes_app 3/3
+abdur_notes_app.1  desired=Running  current=Running 2 minutes ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown about a minute ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 13 minutes ago  err=
+abdur_notes_app.1  desired=Shutdown  current=Shutdown 15 minutes ago  err=
+abdur_notes_app.2  desired=Running  current=Running about a minute ago  err=
+abdur_notes_app.2  desired=Shutdown  current=Shutdown about a minute ago  err=
+
+=== je task ta bosano jayni ===
+ID        NODE      DESIRED STATE   CURRENT STATE   ERROR
+
+=== UpdateStatus (Swarm ki 'completed' bolche, na atke ache?) ===
+{
+    "State": "updating",
+    "StartedAt": "2026-09-04T13:53:08.991727496Z",
+    "Message": "update in progress"
+}
+
+############ UNDO: duitai stack.yml er mane fera ############
+abdur_notes_app
+  15:54:15  undo  state=updating  replicas=4/3
+  15:54:25  undo  state=updating  replicas=3/3
+  15:54:35  undo  state=updating  replicas=3/3
+  15:54:45  undo  state=updating  replicas=3/3
+  15:54:55  undo  state=updating  replicas=3/3
+  15:55:07  undo  state=updating  replicas=3/3
+  15:55:19  undo  state=completed  replicas=3/3
+{
+    "Limits": {
+        "NanoCPUs": 500000000,
+        "MemoryBytes": 268435456
+    },
+    "Reservations": {
+        "NanoCPUs": 100000000,
+        "MemoryBytes": 134217728
+    }
+}
+
+=== purota somoy client ra ki peyeche ===
+    164 200

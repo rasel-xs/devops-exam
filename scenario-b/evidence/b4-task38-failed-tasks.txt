@@ -1,0 +1,53 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:46:40 CEST 2026
+=== task history: v3 er task ta ki obosthay ses holo? ===
+NAME                    IMAGE                                                                                                   DESIRED STATE   CURRENT STATE             ERROR
+abdur_notes_app.1       notes-api:v1@sha256:d6f7c90572258529cff1cb5c5016c0887af403525c648245fc9d6c687d64e5f7   Running         Running 6 minutes ago     
+ \_ abdur_notes_app.1   notes-api:v3                                                                           Shutdown        Shutdown 6 minutes ago    
+ \_ abdur_notes_app.1   notes-api:v2                                                                           Shutdown        Shutdown 8 minutes ago    
+ \_ abdur_notes_app.1   notes-api:v1                                                                           Shutdown        Shutdown 14 minutes ago   
+abdur_notes_app.2       notes-api:v1@sha256:d6f7c90572258529cff1cb5c5016c0887af403525c648245fc9d6c687d64e5f7   Running         Running 6 minutes ago     
+ \_ abdur_notes_app.2   notes-api:v3                                                                           Shutdown        Shutdown 6 minutes ago    
+ \_ abdur_notes_app.2   notes-api:v2                                                                           Shutdown        Shutdown 7 minutes ago    
+ \_ abdur_notes_app.2   notes-api:v1                                                                           Shutdown        Shutdown 13 minutes ago   
+abdur_notes_app.3       notes-api:v1@sha256:d6f7c90572258529cff1cb5c5016c0887af403525c648245fc9d6c687d64e5f7   Running         Running 5 minutes ago     
+ \_ abdur_notes_app.3   notes-api:v3                                                                           Shutdown        Shutdown 5 minutes ago    
+ \_ abdur_notes_app.3   notes-api:v2                                                                           Shutdown        Shutdown 7 minutes ago    
+ \_ abdur_notes_app.3   notes-api:v1                                                                           Shutdown        Shutdown 13 minutes ago   
+
+=== v3 task gulor asol status ===
+--- xoj3h3auuekb ---
+{
+    "Timestamp": "2026-09-04T13:40:21.325159842Z",
+    "State": "shutdown",
+    "Message": "shutdown",
+    "ContainerStatus": {
+        "ContainerID": "b159d9a9d7f1f37a4102cdd91e201fb3d6bd87edadaf47a67f74e2ad6f810183",
+        "PID": 0,
+        "ExitCode": 0
+    },
+    "PortStatus": {}
+}
+--- v9y3phf1ohlb ---
+{
+    "Timestamp": "2026-09-04T13:40:36.141881186Z",
+    "State": "shutdown",
+    "Message": "shutdown",
+    "ContainerStatus": {
+        "ContainerID": "12266eeb785ad29a3555faab28f4370d8d9e519f6e834d08db1ae7c51ed49a86",
+        "PID": 0,
+        "ExitCode": 0
+    },
+    "PortStatus": {}
+}
+--- mae0fwtpsmlr ---
+{
+    "Timestamp": "2026-09-04T13:40:57.51552993Z",
+    "State": "shutdown",
+    "Message": "shutdown",
+    "ContainerStatus": {
+        "ContainerID": "4d2adb8adf382777603be6ff89d154ed8f3ba5ebe9ce6e8be6193fba8a4a9f55",
+        "PID": 0,
+        "ExitCode": 0
+    },
+    "PortStatus": {}
+}

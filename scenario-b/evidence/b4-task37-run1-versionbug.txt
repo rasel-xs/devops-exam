@@ -1,0 +1,81 @@
+
+############ TASK 37  rolling update v1 -> v2 ############
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 15:14:00 CEST 2026
+
+--- starting state ---
+NAME              REPLICAS   IMAGE
+abdur_notes_app   5/5        ghcr.io/rasel-xs/notes-api:v1
+
+--- traffic loop starts (5 req/s) ---
+  baseline (12s before the update):
+         21 200 v1
+
+--- ISSUE THE UPDATE ---
+  t0 = 15:14:13
+abdur_notes_app
+
+--- watch it roll ---
+  15:14:14  state=updating     tasks:       5 v1       1 v2 
+  15:14:19  state=updating     tasks:       5 v1       1 v2 
+  15:14:25  state=updating     tasks:       5 v1       1 v2 
+  15:14:31  state=updating     tasks:       5 v1       1 v2 
+  15:14:37  state=updating     tasks:       4 v1       1 v2 
+  15:14:42  state=updating     tasks:       4 v1       2 v2 
+  15:14:47  state=updating     tasks:       4 v1       2 v2 
+  15:14:52  state=updating     tasks:       3 v1       2 v2 
+  15:14:58  state=updating     tasks:       3 v1       2 v2 
+  15:15:03  state=updating     tasks:       3 v1       3 v2 
+  15:15:09  state=updating     tasks:       3 v1       3 v2 
+  15:15:14  state=updating     tasks:       3 v1       3 v2 
+  15:15:20  state=updating     tasks:       3 v1       3 v2 
+  15:15:25  state=updating     tasks:       2 v1       3 v2 
+  15:15:31  state=updating     tasks:       2 v1       4 v2 
+  15:15:38  state=updating     tasks:       2 v1       4 v2 
+  15:15:44  state=updating     tasks:       2 v1       4 v2 
+  15:15:51  state=updating     tasks:       1 v1       4 v2 
+  15:15:56  state=updating     tasks:       1 v1       4 v2 
+  15:16:02  state=updating     tasks:       1 v1       5 v2 
+  15:16:08  state=updating     tasks:       1 v1       5 v2 
+  15:16:14  state=updating     tasks:       1 v1       5 v2 
+  15:16:19  state=updating     tasks:       5 v2 
+  15:16:25  state=updating     tasks:       5 v2 
+  15:16:30  state=updating     tasks:       5 v2 
+  15:16:36  state=updating     tasks:       5 v2 
+  15:16:42  state=updating     tasks:       5 v2 
+  15:16:47  state=completed    tasks:       5 v2 
+
+--- let traffic settle, then stop the loop ---
+
+--- UpdateStatus ---
+{
+    "State": "completed",
+    "StartedAt": "2026-09-04T13:14:13.262711103Z",
+    "CompletedAt": "2026-09-04T13:16:44.317962919Z",
+    "Message": "update completed"
+}
+
+--- final state ---
+NAME              REPLICAS   IMAGE
+abdur_notes_app   5/5        ghcr.io/rasel-xs/notes-api:v2
+NAME                IMAGE                           CURRENT STATE
+abdur_notes_app.1   notes-api:v2   Running about a minute ago
+abdur_notes_app.2   notes-api:v2   Running 2 minutes ago
+abdur_notes_app.3   notes-api:v2   Running 2 minutes ago
+abdur_notes_app.4   notes-api:v2   Running 44 seconds ago
+abdur_notes_app.5   notes-api:v2   Running about a minute ago
+
+--- STATUS CODE COUNT   [TASK 37 DELIVERABLE] ---
+    396 200
+
+--- version served, over the whole run ---
+    396 v1
+
+--- the transition itself -- 10 lines either side of the first v2 ---
+    no v2 response was ever logged -- the update did not take effect
+  rollout wall-clock: 154s
+
+--- interleaving: were both versions serving at the same time? ---
+        167 v1
+
+############ task 37 complete ############
+log: evidence/b4-task37-update-log.txt

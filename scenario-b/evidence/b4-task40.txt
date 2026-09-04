@@ -1,0 +1,118 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Fri Sep  4 16:07:29 CEST 2026
+curl: curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10
+
+=== 1. 3 -> 5 e scale (brief 5 theke soru korte bole) ===
+abdur_notes_app scaled to 5
+  16:07:39 replicas=5/5 running_tasks=5
+
+=== 2. scale-down er AGE kon container gulo chole ===
+16bcdad15d04  abdur_notes_app.5.j5rvdce4a4ay5s8ik2kqb4qfr
+99d72d66369d  abdur_notes_app.4.ytolviryeprbanzueeglwrflo
+014fff66f2fa  abdur_notes_app.1.n119v5za00c5ky5e5e4ywne2j
+5adf2c7cad10  abdur_notes_app.2.u4c590oxyxaokhq6hu0ll6ibe
+761731ef8852  abdur_notes_app.3.owjzg5dii5gaim23f8a1lhd6b
+
+=== 3. duita client chalu, 20s baseline ===
+
+=== 4. SCALE DOWN 5 -> 2 ===
+  scale issued at 16:08:00.767
+abdur_notes_app scaled to 2
+  16:08:03 replicas=5/2 running_tasks=2
+  16:08:07 replicas=5/2 running_tasks=2
+  16:08:11 replicas=2/2 running_tasks=2
+  converged at 16:08:11.812
+
+=== 5. je container gulo bondho holo, tara ki SIGTERM peyechilo? ===
+---  (abdur_notes_app.5.j5rvdce4a4ay5s8ik2kqb4qfr) STOPPED ---
+
+---  (abdur_notes_app.4.ytolviryeprbanzueeglwrflo) STOPPED ---
+
+---  (abdur_notes_app.1.n119v5za00c5ky5e5e4ywne2j) STOPPED ---
+{"level":"info","msg":"listening","host":"014fff66f2fa","port":3000,"version":"v1","pid":1}
+  exit=0 oom=false
+---  (abdur_notes_app.2.u4c590oxyxaokhq6hu0ll6ibe) STOPPED ---
+{"level":"info","msg":"listening","host":"5adf2c7cad10","port":3000,"version":"v1","pid":1}
+  exit=0 oom=false
+---  (abdur_notes_app.3.owjzg5dii5gaim23f8a1lhd6b) STOPPED ---
+
+
+=== 6. CLIENT A (Connection: close) ===
+  code count:
+        916 200
+  mot request: 916
+  T0=16:08:00.767 er por-er prothom 15 ta line:
+    16:08:00.833 200 1
+    16:08:00.887 200 1
+    16:08:00.906 200 1
+    16:08:00.928 200 1
+    16:08:00.954 200 1
+    16:08:00.971 200 1
+    16:08:01.019 200 1
+    16:08:01.158 200 1
+    16:08:01.187 200 1
+    16:08:01.223 200 1
+    16:08:01.246 200 1
+    16:08:01.268 200 1
+    16:08:01.407 200 1
+    16:08:02.073 200 1
+    16:08:02.694 200 1
+  non-200 line gulo:
+
+=== 7. CLIENT B (keep-alive) ===
+  code count:
+         32 200
+        546 {"status":"ok","version":"v1","host":"014fff66f2fa"}200
+        234 {"status":"ok","version":"v1","host":"16bcdad15d04"}200
+        351 {"status":"ok","version":"v1","host":"5adf2c7cad10"}200
+         78 {"status":"ok","version":"v1","host":"761731ef8852"}200
+         39 {"status":"ok","version":"v1","host":"99d72d66369d"}200
+  connection count (conn=0 mane socket reuse hoyeche):
+       1248 conn=0
+         32 conn=1
+  jei batch e notun connection lagse (conn=1), sei batcher somoy:
+    16:07:40.169  200 conn=1
+    16:07:41.493  200 conn=1
+    16:07:42.672  200 conn=1
+    16:07:43.877  200 conn=1
+    16:07:44.995  200 conn=1
+    16:07:46.117  200 conn=1
+    16:07:47.261  200 conn=1
+    16:07:48.407  200 conn=1
+    16:07:49.658  200 conn=1
+    16:07:50.741  200 conn=1
+    16:07:52.205  200 conn=1
+    16:07:53.971  200 conn=1
+    16:07:55.114  200 conn=1
+    16:07:56.169  200 conn=1
+    16:07:57.459  200 conn=1
+    16:07:58.778  200 conn=1
+    16:08:00.797  200 conn=1
+    16:08:02.244  200 conn=1
+    16:08:03.685  200 conn=1
+    16:08:04.808  200 conn=1
+  non-200 line gulo:
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+{"status":"ok","version":"v1","host":"16bcdad15d04"}200 conn=0
+    (kichu nei)
+=== 8. 3 replicas e fera (stack.yml er man) ===
+abdur_notes_app scaled to 3
+ID             NAME              MODE         REPLICAS   IMAGE                           PORTS
+1cl4iz2qln69   abdur_notes_app   replicated   2/3        ghcr.io/rasel-xs/notes-api:v1   *:3140->3000/tcp
