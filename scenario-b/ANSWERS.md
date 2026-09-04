@@ -1622,28 +1622,83 @@ commands use `--detach` and poll `docker service ls` instead.
 
 ### Task 37 — Rolling update
 
+`docker/b4-task37.sh` runs the traffic loop and the update from one place, so
+the gap between "update issued" and "first v2 response" is measured rather than
+eyeballed across two terminals. Every log line is `TIME CODE VERSION HOST`, all
+four from a single request — `/healthz` returns `{"status","version","host"}`
+and `-w` appends the code — so the same log that proves there was no downtime
+also shows the version flipping.
+
+**Result (run 2, `evidence/b4-task37.txt`):**
+
 ```
-<<FILL: awk '{print $2}' update-log.txt | sort | uniq -c>>
+STATUS CODE COUNT        421 200          <- zero non-200 responses
+VERSION SERVED           239 v2 / 182 v1
+update issued            15:31:59
+first v2 response        15:32:09          (+10s)
+UpdateStatus completed   15:34:03          (124s)
 ```
 
-Non-200s: `<<FILL: be honest — report the real number>>`.
+**Zero downtime, and the interleaving is the proof of *why*:**
 
-If any: the causes, in the order I would check them —
+```
+15:32:08 200 v1 2760e9774730
+15:32:08 200 v1 6abcecef9309
+15:32:09 200 v2 bbf09df64247      <- first v2
+15:32:09 200 v1 6e94b1ecd342      <- v1 still serving in the same second
+15:32:10 200 v2 bbf09df64247
+```
 
-1. **No graceful shutdown.** Swarm sends SIGTERM and SIGKILLs after
-   `stop_grace_period`. Without a handler, in-flight requests die. My app has
-   one (`server.close()` then drain), and the exec-form CMD ensures node is PID
-   1 and actually receives the signal.
-2. **`stop-first` ordering.** The default removes a task before its replacement
-   is ready, so capacity dips. `order: start-first` fixes it, at the cost of
-   needing spare capacity during the rollout.
-3. **No healthcheck**, so a task counts as ready the instant the process
-   starts — before it can serve. `start-first` without a healthcheck buys
-   almost nothing.
-4. **The routing mesh's own convergence.** Even when everything above is right,
-   IPVS rules take a moment to update, so a small number of connections can be
-   sent to a task that is shutting down. This is why zero is genuinely hard and
-   why a single-digit failure count is a more credible answer than zero.
+Both versions answer inside the same second, and the task counts confirm it
+from the orchestrator's side — `5 v1 + 1 v2`, then `4 v1 + 2 v2`, and so on.
+That is `order: start-first`: the replacement is brought to **healthy** before
+the task it replaces is retired, so capacity never dips below five. Under the
+default `stop-first` those moments would have had four tasks instead of five,
+and any request in flight on the killed task would have failed.
+
+The trade is real and worth stating: start-first needs spare capacity, because
+the service temporarily runs `replicas + parallelism` tasks — six here.
+
+**The timing is arithmetic, not luck.** `parallelism: 1`, `delay: 10s`, and a
+task that takes ~15 s to pass its healthcheck gives 5 × ~25 s ≈ 125 s; measured
+124 s. The first v2 appeared 10 s after the command because there was no image
+pull to do — the layers were already on the node. On a multi-node swarm that
+gap is the pull time and can dominate everything else.
+
+`monitor: 20s` is what stops a task that lives for five seconds from counting
+as a success, and `failure_action: rollback` is what task 38 exercises.
+
+---
+
+**Run 1 failed in an instructive way and is kept: `evidence/b4-task37-run1-versionbug.txt`.**
+
+It produced **396 requests, all 200** — genuine zero downtime — but reported
+`v1` for every single one, while `docker service ps` showed five v2 tasks. The
+update had worked; the *reporting* had not.
+
+Cause: `stack.yml` set `APP_VERSION: ${TAG:-v1}` in the service environment, so
+the value `v1` was baked into the **service spec** at deploy time.
+`docker service update --image …:v2` changes the image and nothing else, and a
+container environment variable **overrides the image's own `ENV`**. Confirmed
+directly rather than assumed:
+
+```
+$ docker service inspect abdur_notes_app --format '{{json .Spec…Env}}'
+["APP_VERSION=v1","DATABASE_URL=…","PORT=3000"]
+```
+
+Fixed by removing `APP_VERSION` from the stack file and letting each image
+carry its own (`ENV APP_VERSION=v1` / `v2` / `v3-broken`), then
+`--env-rm APP_VERSION` on the live service. After that the same endpoint reports
+the version that is actually running.
+
+The general point is worth more than the bug: **a version indicator supplied by
+deployment config rather than baked into the artifact will lie during exactly
+the operation it exists to describe.** Had I only checked "did the responses
+stay 200", run 1 would have passed this task while quietly proving nothing about
+which code was serving. It is also a warning about `--image`-only updates in
+general: anything else that drifted into the service spec — an env var, a
+mount, a secret — survives an image roll untouched.
 
 ### Task 38 — Break v3 and roll back
 

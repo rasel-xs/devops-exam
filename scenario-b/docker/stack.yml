@@ -36,7 +36,21 @@ services:
     environment:
       DATABASE_URL: postgres://notes:notes@postgres:5432/notes
       PORT: "3000"
-      APP_VERSION: ${TAG:-v1}
+      # APP_VERSION is deliberately NOT set here. It used to be
+      # `APP_VERSION: ${TAG:-v1}` and that broke task 37 in a way worth keeping
+      # a note about:
+      #
+      #   `docker service update --image .../notes-api:v2` changes the IMAGE and
+      #   nothing else. The environment stays as it was, and a container
+      #   environment variable overrides the image's own ENV. So every v2
+      #   container went on reporting "v1" -- 396 responses, all 200, all
+      #   claiming v1, while `docker service ps` showed five v2 tasks.
+      #
+      # The version indicator has to be baked into the ARTIFACT, not supplied
+      # by the deployment config, or it lies during exactly the operation it
+      # exists to describe. Each image now carries its own ENV APP_VERSION
+      # (v1 in the Dockerfile, v2 in Dockerfile.v2, v3-broken in
+      # Dockerfile.v3broken) and the service does not override it.
     ports:
       # The routing mesh: a request to :3000 on ANY node is load balanced to a
       # healthy task on any node. `mode: host` would bypass the mesh and bind
