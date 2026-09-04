@@ -1543,17 +1543,82 @@ and their relatives all print secrets on the happy path.
 
 ### Task 36 — Scale to 5
 
-`docker service scale notes_app=5`, then 50 requests counted by `X-Served-By`:
+`docker service scale abdur_notes_app=5`, then 50 requests. Evidence:
+`evidence/b4-task36.txt`.
+
+The brief hints that keep-alive can pin every request to one backend. Rather
+than take the hint on faith I ran it three ways, because two things differ
+between "loop of curls with `Connection: close`" and "one curl reusing a
+connection" — the header, and the process boundary — and only a control
+separates them.
+
+| | how the 50 requests were issued | result |
+| --- | --- | --- |
+| **A** | 50 separate `curl`, `-H "Connection: close"` | **10 / 10 / 10 / 10 / 10** across 5 container ids |
+| **B** | **one** `curl` given the URL 50 times | **50 / 50 on a single container** |
+| **C** | 50 separate `curl`, **no** header | **10 / 10 / 10 / 10 / 10** — identical to A |
 
 ```
-<<FILL: paste the uniq -c output showing 5 distinct hostnames>>
+--- A ---
+     10 X-Served-By: f1dd6babef28        --- B ---
+     10 X-Served-By: 775f70fe5661             50 X-Served-By: 57b6b131deec
+     10 X-Served-By: 57b6b131deec
+     10 X-Served-By: 2d2fffe4bda6
+     10 X-Served-By: 10917017bc66
 ```
 
-`-H "Connection: close"` is essential. Without it curl reuses a single keep-alive
-connection, the routing mesh keeps that TCP connection pinned to the same task,
-and you see one hostname and conclude scaling is broken. The distribution is
-also not perfectly even — the mesh uses IPVS round-robin per *connection*, not
-per request.
+Exactly ten each — IPVS round-robin, no jitter at all over 50 samples. The five
+hostnames match the five container ids `docker ps` reports for the service.
+
+**The hint is right about the mechanism and wrong about the fix.** C is
+identical to A, so `Connection: close` changed nothing: each `curl` is a
+separate process that opens its own socket regardless of the header. What
+actually pins traffic is **one client reusing one connection**, which is what B
+does. The rule underneath:
+
+> The routing mesh load balances per **connection**, not per **request**.
+
+That matters beyond this test. A real client with an HTTP keep-alive pool —
+every language's default HTTP client, and every service-to-service call —
+holds connections open and will keep hitting the same replica until the
+connection is recycled. Scaling out does not rebalance existing connections.
+`EndpointSpec` confirms the mode: `{"Mode":"vip", … "PublishMode":"ingress"}` —
+a virtual IP with IPVS behind it, not per-request proxying.
+
+**Something happened during the scale that I could not fully explain, so it is
+recorded as a hypothesis rather than a finding.** Going from 3 to 5 replicas,
+the three *existing* tasks were also replaced:
+
+```
+abdur_notes_app.1       Running  22 seconds ago
+ \_ abdur_notes_app.1   Shutdown 31 seconds ago
+```
+
+What I established:
+
+- They did not crash. `docker inspect` on each shut-down task gives
+  `"Message": "shutdown"` and **`"ExitCode": 0`** — an orderly SIGTERM that the
+  app's shutdown handler processed cleanly.
+- `UpdateStatus` is `null`, and the image digest in `Spec` and `PreviousSpec`
+  is identical, so no image change triggered it.
+- **It is not inherent to scaling.** Control: scaling 5 → 6 afterwards left all
+  five running tasks untouched and added only task 6.
+
+The leading hypothesis is that the first reconcile after `stack deploy`
+resolved the `:v1` tag to a digest (`@sha256:d6f7c905…`, which is what the spec
+holds now), so the tasks created before resolution no longer matched the stored
+spec and were replaced on the next reconciliation — which the 3→5 scale
+triggered. I could not confirm that, and I am not going to present it as
+though I had.
+
+What matters for task 40 is settled either way: **scaling does not by itself
+disturb running tasks**, so any failures counted while scaling down are
+attributable to the scale-down itself.
+
+**Operational note.** `docker service scale` without `--detach` prints
+`overall progress:` and `verify: Waiting N seconds…` on every poll — about a
+hundred lines that made the first transcript nearly unreadable. Later scale
+commands use `--detach` and poll `docker service ls` instead.
 
 ### Task 37 — Rolling update
 
