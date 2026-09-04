@@ -7,3 +7,19 @@ ID                          NAME                    IMAGE                       
 o2fgnznye2gk1jqi1ty0gkkb1   abdur_notes_app.1       notes-api:v1.0.69   vmi3536696   Running         Running 11 minutes 
 vy7jlllzylyczh04k3m5jhlkn   abdur_notes_app.2       notes-api:v1.0.69   vmi3536696   Running         Running 12 minutes 
 s3nwp12i3kulgngbg329rza86   abdur_notes_app.3       notes-api:v1.0.69   vmi3536696   Running         Running 12 minutes 
+
+=== AFTER the deliberately bad deploy (run 13) ===
+run: https://github.com/rasel-xs/devops-exam/actions/runs/33904509040
+captured: 2026-09-04T18:22:16Z
+--- from the internet ---
+{"status":"ok","version":"v1.0.69","host":"b47949a4d83d"}
+{"status":"ok","version":"v1.0.69","host":"8407754bfd5b"}
+{"status":"ok","version":"v1.0.69","host":"c793afcf4133"}
+{"status":"ok","version":"v1.0.69","host":"b47949a4d83d"}
+{"status":"ok","version":"v1.0.69","host":"8407754bfd5b"}
+--- service state ---
+ID                          NAME                    IMAGE                                   NODE         DESIRED STATE   CURRENT STATE 
+o2fgnznye2gk1jqi1ty0gkkb1   abdur_notes_app.1       notes-api:v1.0.69      vmi3536696   Running         Running 24 minutes ago         
+vy7jlllzylyczh04k3m5jhlkn   abdur_notes_app.2       notes-api:v1.0.69      vmi3536696   Running         Running 24 minutes ago         
+27cck7ew47c89ly2thzrgh5vw    \_ abdur_notes_app.3   notes-api:v1.0.99999   vmi3536696   Shutdown        Rejected 2 minutes ago       "f
+s3nwp12i3kulgngbg329rza86    \_ abdur_notes_app.3   notes-api:v1.0.69      vmi3536696   Running         Running 25 minutes ago         

@@ -169,14 +169,7 @@ jobs:
               -o ServerAliveInterval=15 \
               -o ServerAliveCountMax=8 \
               -o TCPKeepAlive=yes \
-              "$VPS_USER@$VPS_HOST" "deploy v1.0.99999"
-          # ^^ B5 task 45, failure 3: DELIBERATE. v1.0.99999 was never built and
-          # does not exist in the registry. It passes the server-side tag
-          # allow-list because it is shaped like a real version, so the request
-          # is accepted and Swarm genuinely attempts the rollout -- which is the
-          # point. A wrong service name would merely have errored without ever
-          # touching production, and would have proved nothing about survival.
-          # Reverted in the next commit.
+              "$VPS_USER@$VPS_HOST" "deploy $VERSION"
 
       # An independent check, from outside the VPS. The remote script already
       # verifies over localhost; this one goes through the published port from

@@ -9,7 +9,8 @@
 > `abdur-notes`, image `abdur/notes-api`, host ports 3120 (app), 3130 (Grafana),
 > 9190 (Prometheus), 5433 (Postgres), 3140 (Swarm), stack `abdur_notes`.
 >
-> `<<FILL: ...>>` marks a number not yet measured.
+> Every number in this document is measured. Where a measurement came out
+> uninteresting, or contradicted what I predicted, it is reported as it came out.
 
 **Library note:** the brief names `prom-client` for Node and that is what I
 used. `npm install` prints a deprecation notice saying it has been renamed to
@@ -121,10 +122,19 @@ suits them.
 | --- | --- | --- |
 | Debian base → Alpine (musl) | ~300 MB | glibc. Native modules must have musl builds or be compiled in-stage; some prebuilt binaries simply will not run. This is the only change here with real risk. |
 | `build-essential`, `python3`, `git` | ~400 MB | Cannot rebuild native modules inside the container. Correct — a runtime image should not be able to compile. |
-| devDependencies (`--omit=dev`) | `<<FILL>>` | Cannot run the test suite inside the production image. Tests run in CI against the source, so nothing lost. |
+| devDependencies (`--omit=dev`) | **0 bytes** | Nothing, because there was nothing to give up — see below. |
 | `npm cache clean --force` | ~50 MB | Nothing. It is a download cache for a machine that will never install again. |
 | npm, npx, yarn (removed explicitly) | see note | Cannot install anything at runtime — which is the entire point. Note this removal does **not** shrink the image: see task 25. |
 | `vim`, `curl` | ~30 MB | Debugging inside the container is harder — no shell tooling to poke around with. Mitigation is `docker debug` / an ephemeral sidecar sharing the namespace, not shipping an editor to production. |
+
+**`--omit=dev` saved nothing here, and I am not going to pretend otherwise.**
+`package.json` has `"devDependencies": {}` — the app's only dependencies are
+`express`, `pg` and `prom-client`, all of which are runtime. The flag is still
+correct to keep, because it is a *policy*: the day someone adds `jest` or
+`eslint`, the production image will not grow, and nobody has to remember to
+change the Dockerfile. But its measured contribution to this image's size is
+zero, and a table that quoted a plausible-looking "~40 MB" there would have been
+an invented number in the middle of a set of measured ones.
 
 The honest trade: the small image is harder to debug in place. That is the right
 trade — a runtime image that can compile code and edit files is also a much more
@@ -2228,43 +2238,129 @@ change alone.
 
 ### Task 45 — Break it three ways
 
-| # | How | Run |
-| --- | --- | --- |
-| 1 | Inverted an assertion in `tests/api.test.js` | `<<FILL: URL>>` |
-| 2 | `COPY nonexistent-file /app/` in the Dockerfile | `<<FILL: URL>>` |
-| 3 | Deploy step pointed at a wrong service name | `<<FILL: URL>>` |
+Each failure is placed one stage later than the last, so the answer to "where
+does this get caught?" is different every time.
 
-**Production survived the failed deploy** — `evidence/b5-prod-survived.png`
-showing `docker service ps notes_app` still on the previous image tag and a
-successful `curl`.
+| # | How | Caught in | Run |
+| --- | --- | --- | --- |
+| 1 | Inverted an assertion in `tests/api.test.js` | `test` | [33903850193](https://github.com/rasel-xs/devops-exam/actions/runs/33903850193) |
+| 2 | `COPY nonexistent-file` in the Dockerfile | `build-and-smoke` | [33903962353](https://github.com/rasel-xs/devops-exam/actions/runs/33903962353) |
+| 3 | Deployed a tag that was never built | `deploy`, on `main` | [33904509040](https://github.com/rasel-xs/devops-exam/actions/runs/33904509040) |
 
-**What made the failed deploy safe.**
+PR: <https://github.com/rasel-xs/devops-exam/pull/2>
 
-1. **`docker service update` is a rolling in-place update, not a
-   delete-and-recreate.** The existing tasks keep serving until new ones are
-   healthy. At no point does a working version stop running.
-2. **`--update-failure-action rollback` plus a healthcheck** — a task that never
-   becomes healthy causes an automatic revert to the previous image.
-3. **`start-first` ordering** — capacity never dips below the current replica
-   count during the attempt.
-4. **The pipeline is ordered so cheap checks fail first.** The test and build
-   failures never reached the deploy job at all: `needs:` means a red build
-   cannot deploy, so two of the three failures could not have touched production
-   even in principle.
-5. **Immutable, uniquely-tagged images** — every build is `v1.0.N` and a SHA, so
-   "the previous version" is a specific artefact that still exists in the
-   registry, not whatever `latest` happened to point at.
+**Failure 1 — the test job.**
 
-**What would have happened with `docker service rm` + recreate:** the service is
-deleted first, so the site is down from that moment. If the recreate then fails
-— bad image, wrong tag, registry unreachable, a typo in the create command —
-there is *nothing running at all* and no automatic path back. You would be
-recovering by hand, under pressure, from a shell. The rollback is also lost:
-Swarm's `--rollback` restores a service's *previous spec*, and a deleted service
-has no history. Worst of all, the failure window is the whole deploy rather than
-the moment of failure, so the outage starts before you know anything is wrong.
+```
+not ok 3 - GET /api/notes/:id returns 404 for an id that does not exist
+  expected: 200
+  actual: 404
+# tests 10   # pass 9   # fail 1
+test: failure     build-and-smoke: skipped
+```
 
-That is the general principle: deploys should be **additive then cut over**, not
+**Failure 2 — the build job, and the point is that job 1 was green.**
+
+```
+test: success                      <- all 10 tests passed
+build-and-smoke: failure
+ERROR: failed to compute cache key: "/nonexistent-file": not found
+```
+
+A test suite cannot see a Dockerfile. `npm test` runs against the source tree
+and never builds an image, so a packaging error passes every test and still
+produces nothing runnable. That is the whole argument for the build-and-smoke
+job existing separately, and failure 2 is what it looks like when it earns its
+place.
+
+#### Failure 3 — and a change to my own plan
+
+My draft answer said "point the deploy step at a wrong service name". I changed
+it, because that failure is worthless as evidence: `docker service update` on a
+name that does not exist errors immediately without touching anything, so
+"production survived" would have been true in the way that standing still is
+true. It tests nothing.
+
+Deploying **a well-formed tag that was never built** is the version that
+actually asks the question. `v1.0.99999` passes the server-side allow-list
+because it is shaped exactly like a real version, so the request is accepted and
+Swarm genuinely begins a rollout against production.
+
+```
+deploying ghcr.io/rasel-xs/notes-api:v1.0.99999 to abdur_notes_app
+--- waiting for convergence ---
+  [1] state=updating          replicas=3/3  tasks_on_v1.0.99999=1/3
+ERROR: the update did not succeed -- state=rollback_started
+  [2] state=rollback_started  replicas=3/3  tasks_on_v1.0.99999=0/3
+
+27cck7ew47c89ly2thzrgh5vw  \_ abdur_notes_app.3  notes-api:v1.0.99999
+    Shutdown   Rejected 5 seconds ago
+    "failed to resolve reference "ghcr.io/rasel-xs/notes-api:v1.0.99999": not found"
+
+Error: Process completed with exit code 1.
+Verify the new version answers from the internet: skipped
+```
+
+**Failed in 17 seconds**, against the 33 seconds B4 task 38 measured — because a
+missing image fails at pull time, while a broken healthcheck has to wait out
+`start_period` plus retries plus `monitor`.
+
+**This also produced the artefact B4 task 38 could not.** That task's brief asked
+for `docker service ps` showing a task in `Failed` or `Rejected` state, and I had
+to write that no such state ever existed: the v3 image *started fine and answered
+wrongly*, so every container exited 0 and Swarm recorded `shutdown`. Here the
+image does not exist at all, so the task genuinely is **`Rejected`**, with the
+registry's error attached. The two runs together make the point better than
+either alone: **an application-level failure produces no container-level failure
+state, and only an infrastructure-level one does.**
+
+#### Production survived — the number that proves it
+
+`evidence/b5-prod-survived.txt`, recorded before and after:
+
+```
+BEFORE 18:09:41Z   {"version":"v1.0.69"}   3 tasks Running 11-12 minutes
+AFTER  18:22:16Z   {"version":"v1.0.69"}   3 tasks Running 24-25 minutes
+```
+
+**The uptime is the evidence.** Those containers are 24 and 25 minutes old,
+which means they predate the bad deploy by more than twenty minutes and were
+never restarted, never replaced, never even briefly removed from the mesh. Five
+consecutive requests from the public internet returned 200 from three different
+containers, all still on `v1.0.69`. The entire cost of the failed deploy was one
+`Rejected` task in the service's history.
+
+#### What made the failed deploy safe
+
+1. **`docker service update` is a rolling in-place update, not delete-and-
+   recreate.** At no point does a working version stop running.
+2. **`--update-failure-action rollback` with a healthcheck.** Here the task never
+   started at all, so rollback fired on the pull failure — 17s from request to
+   `rollback_started`.
+3. **`start-first` ordering.** The replacement must be healthy before the task it
+   replaces is retired. `tasks_on_v1.0.99999` never got past 1, and `replicas`
+   never dropped below `3/3`.
+4. **Cheap checks fail first.** Failures 1 and 2 never reached the deploy job at
+   all — `needs:` means a red build cannot deploy, so two of the three could not
+   have touched production even in principle.
+5. **Immutable, uniquely-tagged images.** "The previous version" is `v1.0.69`, a
+   specific artefact still in the registry, not whatever `latest` happens to
+   point at.
+
+#### What `docker service rm` + recreate would have done instead
+
+The service is deleted first, so the site is down from that moment — before
+anything has gone wrong, and for the whole length of the deploy rather than the
+moment of failure. Then the recreate fails on the same missing tag, and there is
+**nothing running at all** and no automatic path back: `--rollback` restores a
+service's *previous spec*, and a deleted service has no spec to restore. Recovery
+becomes a human at a shell, under pressure, reconstructing a `service create`
+command from memory.
+
+Applied to what actually happened: the same 17 seconds would have been a
+permanent outage instead of a log line.
+
+That is the general principle — deploys should be **additive then cut over**, not
 **destructive then rebuild**. Same idea as blue/green, and the same reason
 `start-first` exists.
 
