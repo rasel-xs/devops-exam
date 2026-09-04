@@ -2063,7 +2063,7 @@ against a real Postgres service container → build → **run the image and curl
 | | Run | Result |
 | --- | --- | --- |
 | Failing | [33884146208](https://github.com/rasel-xs/devops-exam/actions/runs/33884146208) | `test` **failure** in 21s, `build-and-smoke` **skipped** in 0s |
-| Passing | [33884321458](https://github.com/rasel-xs/devops-exam/actions/runs/33884321458) | both green, 47s end to end |
+| Passing | [33884321458](https://github.com/rasel-xs/devops-exam/actions/runs/33884321458) | both green; GitHub reports **51s**, of which 45s is the two jobs (22s + 23s) and the rest is queueing between them |
 
 Screenshots: `evidence/b5-pr-failed.png`, `evidence/b5-pr-passed.png`. Full log
 extract: `evidence/b5-pr-failed.txt`.
@@ -2577,6 +2577,28 @@ issued `docker service update` against `abdur_notes_app` concurrently, which is
 precisely the incident described above. Note also *which* one is queued: the
 **newer** commit is the one waiting, so if these had raced, the version left
 running could easily have been the older one.
+
+**And a limitation of the safeguard, found the same way.** `cancel-in-progress:
+false` protects the run that is *executing*; it does not give you a queue.
+GitHub keeps at most **one** pending run per concurrency group, so a newer push
+cancels the one waiting behind the gate. Five pushes to `main` in quick
+succession produced exactly that:
+
+```
+33907618929  pending                <- newest, queued
+33906838041  completed/cancelled
+33906171234  completed/cancelled    <- each superseded by the next
+33905896621  completed/cancelled
+33905733598  waiting                <- holding the group at the approval gate
+```
+
+Nothing here was harmful — every cancelled run had already pushed its image, and
+only the deploy was skipped — but it is worth stating plainly rather than
+implying the group queues everything. If each commit genuinely had to reach
+production, `concurrency` alone would not deliver that; the deploy would need to
+be idempotent and driven from the current `main` rather than from the commit
+that triggered it. For this exam the behaviour is correct: the newest commit is
+what should go out, and the intermediate ones are exactly what you want dropped.
 
 Note the deliberate asymmetry: the PR workflow uses `cancel-in-progress: true`,
 because superseding a build wastes nothing, while cancelling a half-finished
