@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+# B4 task 37 -- v2, for the rolling update.
+#
+#   docker build -f docker/Dockerfile.v2 -t $REG/notes-api:v2 .
+#
+# Identical code, one environment variable different. That is on purpose: the
+# rolling update has to be observable, and APP_VERSION is already surfaced in
+# the X-App-Version header, in /healthz and in /readyz, so the traffic loop can
+# see the version flip over mid-roll.
+#
+# Why not just `docker service update --env-add APP_VERSION=v2`: because task 37
+# asks for an image roll, and an env-only update would not exercise the image
+# pull at all -- which is the part that is slow and the part that can fail.
+ARG BASE=abdur/notes-api:multi
+FROM ${BASE}
+ENV APP_VERSION=v2

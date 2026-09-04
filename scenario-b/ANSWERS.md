@@ -1446,12 +1446,100 @@ Stack file: [`docker/stack.yml`](docker/stack.yml).
 
 ### Task 35 — Deploy
 
-**Nodes used: `<<FILL: one / two>>`.** `docker node ls` and
-`docker stack services notes` in `evidence/b4-stack.png`.
+**Nodes used: ONE.** A single-node swarm on the exam VPS — the brief allows it
+("single node is fine") and I chose it deliberately over building a second node
+with Docker-in-Docker, because the remaining budget is better spent on B5 and
+Scenario C than on debugging overlay networking between nested daemons. What
+one node cannot demonstrate is stated in full below rather than glossed over.
 
-The stack pulls `ghcr.io/rasel-xs/notes-api:v1` from the registry.
-`build:` is ignored entirely by `docker stack deploy` — it does not warn, the
-service simply never starts on a node that lacks the image.
+Evidence: `evidence/b4-task35.txt` from `docker/b4-task35.sh`.
+
+```
+ID                          HOSTNAME    STATUS  AVAILABILITY  MANAGER STATUS  ENGINE
+krmj8bc57xasj0o4k2depeemg * vmi3536696  Ready   Active        Leader          29.7.2
+
+NAME                   MODE        REPLICAS  IMAGE                          PORTS
+abdur_notes_app        replicated  3/3       ghcr.io/rasel-xs/notes-api:v1  *:3140->3000/tcp
+abdur_notes_postgres   replicated  1/1       postgres:16-alpine
+
+HTTP/1.1 200 OK
+X-Served-By: 7cce466a4db8
+X-App-Version: v1
+```
+
+**Namespacing on a shared host.** Stack `abdur_notes` (services
+`abdur_notes_app`, `abdur_notes_postgres`), published port **3140** (3120
+belongs to the compose stack), overlay `abdur_notes_notes_net`. One thing here
+is **not** namespaceable: `docker swarm init` is daemon-wide state. There is no
+per-user swarm. The consequence is that `docker swarm leave --force` would
+destroy every stack on this host, not only mine, so it is never run here;
+cleanup is `docker stack rm abdur_notes`.
+
+**The image comes from a registry, and that was verified against the registry
+rather than against `docker images`.** `docker stack deploy` ignores `build:`
+entirely — no warning, the service simply never starts on a node that cannot
+get the image. A local tag would in fact have worked here, because on one node
+the manager is also the only worker and the image is already on disk; that is
+exactly the assumption that breaks the first time a second node appears, so it
+was not used. `docker images` only proves a local tag exists — a failed push
+leaves one behind — so the check is `docker manifest inspect`, which asks the
+registry:
+
+```
+v1   present in registry
+v2   present in registry
+v3   present in registry
+```
+
+`--with-registry-auth` passes the login into the service spec so tasks can pull
+the private GHCR image. On a single node it appears to work without the flag,
+because the manager daemon already holds the credentials — which is precisely
+why it is easy to forget until a second node exists.
+
+**Convergence took 15 seconds**, and the order is worth noting:
+
+```
+14:54:15  app 0/3   postgres 0/1
+14:54:20  app 0/3   postgres 1/1
+14:54:30  app 3/3   postgres 1/1
+```
+
+Postgres became ready first and the app followed. **Swarm has no `depends_on`
+at all** — no equivalent of the `condition: service_healthy` that fixed B2
+task 26. The app converged anyway because `db/migrate.js` retries for 60
+seconds on its own. That is the reason the retry loop was not redundant with
+the compose healthcheck: here it is the only thing doing the job.
+
+**A secret leaked into the evidence, and what was done about it.**
+`docker swarm init` prints a worker join token on success. It went into
+`evidence/b4-task35.txt` and would have been committed to GitHub. That token
+plus the server IP is enough for anyone to join the swarm as a worker and run
+containers on this host — it is a credential, not an identifier.
+
+Fixed in the order that matters: **rotate first, redact second.**
+
+```bash
+docker swarm join-token --rotate worker
+docker swarm join-token --rotate manager
+sed -i 's/SWMTKN-[A-Za-z0-9-]*/SWMTKN-<REDACTED-AND-ROTATED>/g' evidence/b4-task35.txt
+```
+
+Rotation invalidates the leaked token immediately, so redaction is only the
+second line of defence; a redacted-but-live token is still a live token.
+Rotation does not disturb running nodes — join tokens are for *joining*, and
+existing members authenticate with their own certificates, which the `3/3`
+after rotation confirms. The general lesson is that command output cannot be
+piped into evidence unexamined: `swarm init`, `docker login`, `kubeadm init`
+and their relatives all print secrets on the happy path.
+
+**What one node cannot show**, stated plainly rather than left implied:
+
+- no real high availability — three replicas in one failure domain;
+- no scheduling across nodes, so `placement.constraints` beyond
+  `node.platform.os` is untested;
+- no node-failure rescheduling;
+- the registry requirement is satisfied but not *exercised*: nothing here would
+  have failed if the image had only been local.
 
 ### Task 36 — Scale to 5
 
