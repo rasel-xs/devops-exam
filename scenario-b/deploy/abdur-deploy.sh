@@ -69,6 +69,11 @@ docker service ps "$SERVICE" --no-trunc | head -10
 # "update completed" for a service answering 500 to every request.
 echo "--- verifying the deployed version actually answers ---"
 for i in $(seq 1 30); do
+  # The echo is not decoration. The first CI deploy died with "Broken pipe"
+  # during this loop: it produced no output for a minute and the SSH transport
+  # went away. Keepalives on the client are the real fix; this makes the
+  # symptom visible in the log if it happens again.
+  echo "  health poll $i/30"
   if curl -sf http://localhost:3140/healthz | grep -q '"status":"ok"'; then
     echo "live and healthy:"; curl -s http://localhost:3140/healthz; echo
     exit 0

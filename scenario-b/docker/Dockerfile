@@ -22,9 +22,20 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # ---------------------------------------------------------------- runtime ----
 FROM node:20-alpine AS runtime
+
+# B4 task 37 found that a version string supplied by deployment config lies
+# during exactly the operation it exists to describe, and fixed that by baking
+# the version into the image. B5 task 44 then found the other half of the same
+# bug: baked in, yes, but baked in as a CONSTANT. Every CI build carried the tag
+# v1.0.<n> and reported "v1" from /healthz, so the endpoint that is supposed to
+# answer "which code is running?" answered the same thing forever.
+#
+# As a build arg it tracks the artefact: the CI passes the version it derived,
+# and the default keeps B4's manually built images reproducible.
+ARG APP_VERSION=v1
 ENV NODE_ENV=production \
     PORT=3000 \
-    APP_VERSION=v1
+    APP_VERSION=${APP_VERSION}
 
 # wget is busybox's, already in alpine, and is used by HEALTHCHECK below. No
 # curl, no bash, no compiler, no npm cache, no package manager metadata.

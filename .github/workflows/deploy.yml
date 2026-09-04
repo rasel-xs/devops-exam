@@ -94,6 +94,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Without this every image reports APP_VERSION=v1 from /healthz no
+          # matter which tag it carries -- see the comment in the Dockerfile.
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Multi-arch. Worth it because my VPS is amd64 and my laptop is an
@@ -151,11 +155,20 @@ jobs:
           # this string lands in SSH_ORIGINAL_COMMAND and is validated against a
           # tag allow-list before anything runs. The key cannot open a shell --
           # see evidence/b5-deploykey-restriction.txt.
+          # ServerAliveInterval matters: the first run of this deploy updated all
+          # three replicas successfully and then died with
+          # "client_loop: send disconnect: Broken pipe", exit 255, during the
+          # remote health-check loop. The deploy had worked; the SSH transport
+          # had not survived a quiet minute over the public internet. Keepalives
+          # turn that silence into traffic.
           ssh -n -i ~/.ssh/deploy_key \
               -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts \
               -o ConnectTimeout=15 \
+              -o ServerAliveInterval=15 \
+              -o ServerAliveCountMax=8 \
+              -o TCPKeepAlive=yes \
               "$VPS_USER@$VPS_HOST" "deploy $VERSION"
 
       # An independent check, from outside the VPS. The remote script already

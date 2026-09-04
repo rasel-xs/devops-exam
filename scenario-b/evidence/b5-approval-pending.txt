@@ -1,0 +1,24 @@
+=== B5 task 44 -- the approval gate holding a deploy ===
+run: https://github.com/rasel-xs/devops-exam/actions/runs/33887554358
+captured: 2026-09-04T15:09:11Z
+
+--- run + jobs ---
+run status: waiting  conclusion: 
+  build-and-push: completed / success
+  deploy: waiting / 
+
+--- pending deployment ---
+  environment:  production
+  wait_timer:   0
+  can approve:  true
+  reason:       null
+  reviewers:    rasel-xs
+
+--- what build-and-push pushed ---
+
+--- what build-and-push pushed (task 43) ---
+  Digest: sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+  building v1.0.66 from 6f6fc07
+  echo "building v1.0.$N from ${GITHUB_SHA:0:7}"
+  ghcr.io/rasel-xs/notes-api:latest
+ghcr.io/rasel-xs/notes-api:latest
