@@ -51,7 +51,23 @@ echo "deploying $IMAGE to $SERVICE"
 # the replacements are healthy, and a task that never becomes healthy triggers
 # an automatic revert -- measured in B4 task 38 at 33s with zero failed client
 # requests.
-docker service update \
+#
+# --detach is deliberate. Without it, `docker service update` blocks on its own
+# progress display, and CI run #10 sat on "overall progress: 0 out of 3 tasks"
+# for more than eight minutes while the service had in fact converged in 93
+# seconds (UpdateStatus said "completed", all three tasks healthy on the new
+# image). The cause is a leftover task from the task-39 reservation experiment
+# that has an empty NodeID -- the progress writer resolves tasks to nodes and
+# never marks that slot done. Rather than depend on a display, this polls the
+# two things that are actually authoritative: UpdateStatus.State, and how many
+# running tasks carry the requested tag.
+# Remember which update we are replacing. Without this the poll below can read
+# the PREVIOUS update's "completed" in the first second and declare success
+# before Swarm has even started -- a bug I put in this script and caught by
+# reading it, not by running it.
+prev_started=$(docker service inspect "$SERVICE" --format '{{.UpdateStatus.StartedAt}}')
+
+docker service update --detach \
   --image "$IMAGE" \
   --update-order start-first \
   --update-parallelism 1 \
@@ -59,12 +75,48 @@ docker service update \
   --update-monitor 20s \
   --update-failure-action rollback \
   --with-registry-auth \
-  "$SERVICE"
+  "$SERVICE" > /dev/null
+
+echo "--- waiting for convergence ---"
+converged=no
+i=0
+while [ "$i" -lt 72 ]; do
+  i=$((i + 1))
+  state=$(docker service inspect "$SERVICE" --format '{{.UpdateStatus.State}}')
+  started=$(docker service inspect "$SERVICE" --format '{{.UpdateStatus.StartedAt}}')
+  reps=$(docker service ls --filter "name=$SERVICE" --format '{{.Replicas}}')
+  want=${reps#*/}
+  on_new=$(docker service ps "$SERVICE" --filter desired-state=running \
+             --format '{{.Image}}' | grep -c ":${tag}\$" || true)
+  echo "  [$i] state=$state  replicas=$reps  tasks_on_${tag}=$on_new/$want"
+
+  # Three conditions, because any one of them alone has a way of lying:
+  #   - a stale "completed" belongs to the previous update  -> compare StartedAt
+  #   - "completed" is Swarm's opinion of its own rollout   -> count the tasks
+  #   - counting tasks alone cannot see a rollback          -> read the state
+  if [ "$started" != "$prev_started" ]; then
+    case "$state" in
+      completed)
+        [ "$on_new" = "$want" ] && { converged=yes; break; } ;;
+      rollback_started|rollback_completed|rollback_paused|paused)
+        echo "ERROR: the update did not succeed -- state=$state" >&2
+        docker service ps "$SERVICE" --no-trunc >&2
+        exit 1 ;;
+    esac
+  fi
+  sleep 5
+done
+
+if [ "$converged" != "yes" ]; then
+  echo "ERROR: update did not reach 'completed' within 6 minutes" >&2
+  docker service ps "$SERVICE" --no-trunc >&2
+  exit 1
+fi
 
 echo "--- tasks after the update ---"
 docker service ps "$SERVICE" --no-trunc | head -10
 
-# The update command returning 0 only means Swarm accepted the instruction.
+# The update reaching "completed" only means Swarm accepted and rolled it out.
 # B4 task 38 phase B is the reason this check exists: Swarm reported
 # "update completed" for a service answering 500 to every request.
 echo "--- verifying the deployed version actually answers ---"
