@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLoginTokenIsRegistryWideAndCannotBeScopedSoResourceIsStar",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushToTheAbdurNotesApiRepositoryOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api"
+    },
+    {
+      "Sid": "UpdateTheAbdurNotesSvcServiceOnly",
+      "Effect": "Allow",
+      "Action": "ecs:UpdateService",
+      "Resource": "arn:aws:ecs:eu-north-1:750069566598:service/abdur-exam-cluster/abdur-notes-svc"
+    }
+  ]
+}

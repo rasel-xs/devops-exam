@@ -71,7 +71,115 @@ Deliverables: the policy JSON, a screenshot of the user pushing to ECR, and a
 screenshot of the same user being denied something else (e.g. `aws s3 ls` →
 AccessDenied).
 
-<!-- status: not started -->
+**User:** `abdur-exam-deployer` — not `exam-deployer`, which already belonged to
+another student in this shared account (see *Constraints* above).
+**Policy:** [`iam/abdur-exam-deployer-policy.json`](iam/abdur-exam-deployer-policy.json),
+`arn:aws:iam::750069566598:policy/abdur-exam-deployer-policy`.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLoginTokenIsRegistryWideAndCannotBeScopedSoResourceIsStar",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushToTheAbdurNotesApiRepositoryOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api"
+    },
+    {
+      "Sid": "UpdateTheAbdurNotesSvcServiceOnly",
+      "Effect": "Allow",
+      "Action": "ecs:UpdateService",
+      "Resource": "arn:aws:ecs:eu-north-1:750069566598:service/abdur-exam-cluster/abdur-notes-svc"
+    }
+  ]
+}
+```
+
+#### The one `"*"`, and where its comment is
+
+IAM policy documents are strict JSON, which has **no comment syntax**. The brief
+asks for a comment beside every unavoidable `"*"`, so the **`Sid` carries it**:
+`EcrLoginTokenIsRegistryWideAndCannotBeScopedSoResourceIsStar`. The reason is
+visible to anyone reading the policy in the console, not only in this file.
+
+The reason itself: `ecr:GetAuthorizationToken` returns a login token for the
+**whole registry**, not for a repository, and AWS does not support resource-level
+permissions on it — an ARN in that `Resource` makes the statement never match.
+It is also harmless on its own. A token only authenticates; every action that
+does anything with it is in the second statement, which is pinned to one
+repository ARN.
+
+#### What I removed from my own first draft
+
+The first version also granted `ecr:BatchGetImage` and `ecs:DescribeServices`.
+Both came out on re-reading, because "nothing else" is the requirement:
+
+- `ecr:BatchGetImage` is the **pull** action. `docker push` never calls it — it
+  checks layer existence (`BatchCheckLayerAvailability`), uploads, and writes the
+  manifest (`PutImage`). A deployer that can pull can also exfiltrate every image
+  in the repository.
+- `ecs:DescribeServices` is not needed to update a service —
+  `aws ecs update-service` returns the updated service description in its own
+  response.
+
+If either turned out to be necessary, the denial message would name the exact
+missing action, which is the right way to find out.
+
+#### Attached, and nothing else attached
+
+```
+Permissions policies (1)
+  abdur-exam-deployer-policy    Customer managed    Attached directly
+Permissions boundary            (not set)
+Groups                          0
+Console password                none
+Access keys                     none until the push test, deleted after it
+```
+
+`Groups: 0` matters more than it looks. IAM permissions are a **union**: a policy
+never narrows what another grants. In an account where `AdministratorAccess` is
+attached to seven identities, putting this user in the wrong group would silently
+make every line of the policy above irrelevant.
+
+No console password, because a deployer is a machine identity. A password it
+never uses is still a credential that can leak.
+
+The console's summary of the policy reads **"Allow (2 of 475 services)"** —
+Elastic Container Registry and Elastic Container Service.
+
+#### "Limited: Read, Write" — why Read, if pull was removed?
+
+The policy summary labels ECR as **Read, Write**, which looks like it contradicts
+removing the pull action. It does not. IAM files every action under an access
+level, and AWS itself classifies two of the push prerequisites as *Read*:
+
+| Action | AWS access level | What it actually does |
+| --- | --- | --- |
+| `ecr:GetAuthorizationToken` | Read | fetch a login token |
+| `ecr:BatchCheckLayerAvailability` | Read | ask "does this layer already exist?" before uploading it |
+| `ecr:BatchGetImage` | Read | **download an image — not granted** |
+
+So the label describes the *category* of the granted actions, not a capability.
+It is tested directly rather than argued: the push run below calls
+`ecr batch-get-image` as this user and records the denial.
+
+Evidence: `evidence/c1-task47-user-permissions.png`,
+`evidence/c1-task47-policy-summary.png`.
+
+<!-- status: policy + user done; push and denial tests pending -->
 
 ### Task 48 (4 marks) — Test your policies
 
@@ -92,7 +200,41 @@ CI/CD pipeline from Scenario B. Default VPC; keep the networking simple.
 
 Deliverable: screenshot of the image in ECR with its tag and size.
 
-<!-- status: not started -->
+**Repository:** `750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api`
+
+| Setting | Chosen | Why |
+| --- | --- | --- |
+| Visibility | Private | a public repo lets anyone pull the image |
+| Tag mutability | **Mutable, with `v1.0.*` and `sha-*` excluded** | see below |
+| Encryption | AES-256 | encryption at rest either way; KMS adds $1/key/month plus API charges to an account already over budget |
+| Scan on push | On | basic scanning is free and checks OS packages for known CVEs on every push |
+| Tag | `exam-token` | puts the token on every console screenshot of the resource itself |
+
+**The mutability choice is the only real decision on that page.** Immutable tags
+are what you want for release versions — `v1.0.66` should name one image
+forever, and B4 task 38's rollback only works because the previous version is a
+specific artefact nobody can overwrite. But the CI also pushes `latest`, whose
+entire job is to move, and a fully immutable repository rejects the second push
+of it.
+
+ECR's *mutable tag exclusions* resolve that directly: the repository is mutable,
+and tags matching `v1.0.*` or `sha-*` are immutable. So version and commit tags
+are fixed artefacts while `latest` is free to move — and `latest` is never a
+deploy target anywhere in this repository.
+
+**The cost of that choice, stated in advance:** re-running CI on the *same*
+commit will now fail at the push step with `tag invalid: already exists`. A
+rebuild of the same source is not byte-identical (layer timestamps change), so
+it is a genuinely different image claiming an existing version number, and
+refusing it is the setting doing its job. The task 53 pipeline therefore checks
+whether the tag already exists before pushing. B5 needed five re-runs of one
+deploy; with this setting each would have stopped at the registry.
+
+One console note: repository-level *scan on push* is marked **deprecated** in
+favour of registry-level scanning filters (*Features & Settings → Scanning*). It
+still works; the registry-level filter is the current way to configure it.
+
+<!-- status: repository created; image not yet pushed -->
 
 ### Task 50 (8 marks) — Task definition
 
