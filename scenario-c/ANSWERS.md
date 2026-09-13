@@ -40,16 +40,42 @@ The account was handed to me as an IAM user. Anything needing root — enabling
 *IAM access to Billing Information*, for instance — cannot be done, and where a
 task depends on it that is stated rather than skipped.
 
-### 3. Cost figures are denied, and the account is already over budget
+### 3. The account was already over budget — and billing visibility changed mid-scenario
 
-The Billing console opens, but every cost figure reads **Access denied**:
-month-to-date, forecast, and last month. What *is* visible is the Budgets
-widget, and it already says **"1 over budget"** — before I had created anything.
+**On 2026-09-12**, the Billing console opened but every cost figure read
+**Access denied** — month-to-date, forecast, last month. Only the Budgets widget
+was visible, and it already said **"1 over budget"** before I had created
+anything. This user has what looks like `AdministratorAccess` (attached to seven
+identities), so the denial was not an IAM policy: billing data is gated
+separately, by the root user enabling *IAM user and role access to Billing
+information*.
 
-This changes task 63 from a formality into the thing to be most careful about.
-It also means the brief's "set a billing alarm at $5 before you start" is not
-available to me: `budgets:ModifyBudget` is not granted, and the existing budget
-belongs to whoever owns the account.
+**By 2026-09-14** that had been switched on, and the same page showed real
+figures (`evidence/c0-billing-mtd.png`):
+
+```
+Month-to-date cost (Sep 1-14)   $10.61
+Last month, same period         $0.00
+Last month total                $0.00
+Forecast                        Data unavailable
+Budgets                         1 over budget
+```
+
+**None of the $10.61 is mine.** At that point I had created an empty ECR
+repository, an ECS cluster with no tasks, and an IAM user and policy — all of
+which cost nothing while idle. The baseline records what *was* billable: one
+running ECS service and two Elastic IPs belonging to other students. $10.61 over
+14 days is about $0.76 a day, inside the $0.50–1.00 range the baseline estimated
+from those resources before the figure was visible. The daily Cost Explorer view
+(`evidence/c0-cost-explorer-daily.png`) shows the spend accruing before my first
+resource existed (the policy, 2026-09-13 00:49 +06:00).
+
+"Forecast: Data unavailable" is expected rather than a permission problem — Cost
+Explorer needs enough usage history to project from, and last month was $0.
+
+The brief's "set a billing alarm at $5 before you start" was not something I
+could meaningfully do: the account's only budget already existed, belonged to
+whoever administers it, and was already exceeded by spend that predates me.
 
 **Neither ALB nor Fargate is free tier** on an account this old — roughly
 **$0.54/day** for the load balancer and **$0.55/day** for two 256/512 Fargate
@@ -422,9 +448,12 @@ aws ec2 describe-instances \
 
 showing nothing left, plus a screenshot of the Billing or Cost Explorer page.
 
-**Known limit:** the cost figures on that page are `Access denied` for this IAM
-user (see constraints above), so the billing screenshot will show the denial
-rather than a number. The resource listings are unaffected and are the part that
-proves nothing is still running.
+**Note:** when this scenario began the cost figures on that page were
+`Access denied` for this IAM user; access to billing information was enabled on
+2026-09-14 (see constraints above), so the final billing screenshot can show real
+numbers. Because the account is shared, those numbers will include other
+students' spend — the cleanup is proven by the resource listings, and the
+billing page is compared against `evidence/c0-billing-mtd.png` from before any
+billable resource of mine existed.
 
 <!-- status: not started -->
