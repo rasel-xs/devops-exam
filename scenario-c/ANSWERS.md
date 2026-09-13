@@ -244,7 +244,104 @@ repository the policy does not name, and records the denial.
 Evidence: `evidence/c1-task47-user-permissions.png`,
 `evidence/c1-task47-policy-summary.png`.
 
-<!-- status: policy + user done; push and denial tests pending -->
+#### The push, and six denials — run 3
+
+[`c1-task47-push.sh`](c1-task47-push.sh), transcript
+`evidence/c1-task47-push.txt`, screenshots `evidence/c1-task47-push-success.png`
+and `evidence/c1-task47-denied.png`.
+
+```
+identity confirmed: arn:aws:iam::750069566598:user/abdur-exam-deployer
+Login Succeeded
+fff4e2c1b189: Layer already exists        (all ten, left behind by run 2)
+v1.0.69: digest: sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf size: 2187
+push exit code: 0
+```
+
+| # | Call, as `abdur-exam-deployer` | Result |
+| --- | --- | --- |
+| 1 | `aws s3 ls` | `AccessDenied` — `s3:ListAllMyBuckets` |
+| 2 | `aws ecs list-clusters` | `AccessDeniedException` — `ecs:ListClusters on resource: *` |
+| 3 | `aws ecr describe-repositories` | `AccessDeniedException` — `ecr:DescribeRepositories on …repository/*` |
+| 4 | **granted** `ecr:BatchCheckLayerAvailability`, on `abdur-not-this-repo` | `AccessDeniedException` |
+| 5 | **granted** `ecs:UpdateService`, on `abdur-exam-cluster/abdur-not-this-svc` | `AccessDeniedException` |
+| 6 | `aws iam list-attached-user-policies` | `AccessDenied` |
+
+Every one of the six was checked by the script to be an authorization denial
+rather than some other failure (see *run 1* below for why that check exists):
+`=== all 6 outside-policy calls were genuinely denied ===`.
+
+**Rows 4 and 5 are the ones that carry task 47.** Rows 1–3 and 6 show actions the
+policy never mentions being refused, which any narrow policy would do. Rows 4
+and 5 use actions the policy **does** grant — row 4's action had succeeded five
+seconds earlier, as the "Layer already exists" lines of this very push — against
+a repository and a service the policy does not name. That is the `Resource`
+field doing its job, observed rather than asserted. Both targets deliberately do
+not exist, so even a policy that was wrongly broad could not have changed
+anything real.
+
+Three details in those errors are worth reading closely:
+
+- **`AccessDenied`, not `RepositoryNotFound`.** `abdur-not-this-repo` does not
+  exist, and AWS still answered with a denial. Authorization is evaluated before
+  existence, which also means an identity without permission cannot use error
+  messages to discover which repositories do exist.
+- **"because no identity-based policy allows the … action"** appears in every
+  error. That is an *implicit* deny — nothing granted it. An SCP or an explicit
+  `Deny` statement produces a differently worded message ("with an explicit
+  deny in a service control policy"). So these refusals come from this policy's
+  narrowness alone, not from some other control in the account.
+- **The command, the API and the IAM action are three different names.**
+  `aws s3 ls` calls the `ListBuckets` API, which IAM authorises as
+  `s3:ListAllMyBuckets`. A policy has to be written in the last of those, and the
+  denial message is the most reliable place to learn it.
+
+#### The secret never touched the shared disk
+
+The VPS is shared and every student on it is root, so the script took the key
+at a prompt, held it only in its own environment, pointed
+`AWS_SHARED_CREDENTIALS_FILE` at `/dev/null`, and sent `docker login`'s 12-hour
+ECR token to a temporary `DOCKER_CONFIG` removed on exit. Docker's own warning
+confirms where the token went — `/tmp/tmp.MTMQGz1IiS/config.json`, not
+`/root/.docker/config.json` — and after run 2 the equivalent directory was
+checked and gone:
+
+```
+$ ls /tmp/tmp.lHHDlST887
+ls: cannot access '/tmp/tmp.lHHDlST887': No such file or directory
+```
+
+The access key was deactivated and deleted immediately after run 3
+(`evidence/c1-task47-key-deleted.png`). The key ID that appears in the
+transcripts is redacted in the committed copies; it identifies a key that no
+longer exists and was never secret on its own, but it has no reason to be in a
+public repository.
+
+#### Run 1 produced false evidence, and that is why the script checks
+
+The first run is kept as `evidence/c1-task47-push-run1-paste-ahead.txt` because
+of what it nearly got away with. A multi-line paste arrived while the script was
+starting, and its own prompts consumed the still-buffered lines — the "access
+key ID" was `cd /root/abdur-exam`. Every call then failed with
+`IncompleteSignature` or `AuthorizationHeaderMalformed`: a space inside the key
+ID breaks the `Credential=` field of the SigV4 header, so AWS rejected each
+request **before identifying anyone**.
+
+The script at that point did not stop when identity verification failed, and it
+printed all five of those failures under a heading that read **DENIED**. Read
+quickly, the transcript proved task 47. It proved nothing.
+
+The script now drains typeahead before prompting and reads from `/dev/tty`,
+format-checks the key ID and secret, refuses to run any test unless `sts`
+confirms `user/abdur-exam-deployer`, and only counts a test as denied if the
+error text is an authorization denial — anything else is reported as
+`NOT A DENIAL` and flagged in the summary.
+
+The general lesson is the one Scenario B kept teaching: **a check that fails is
+not the same as a check that passes the way you wanted.** A "denied" result is
+only evidence once you have confirmed who was asking and why they were refused.
+
+<!-- status: DONE -->
 
 ### Task 48 (4 marks) — Test your policies
 
@@ -299,7 +396,50 @@ One console note: repository-level *scan on push* is marked **deprecated** in
 favour of registry-level scanning filters (*Features & Settings → Scanning*). It
 still works; the registry-level filter is the current way to configure it.
 
-<!-- status: repository created; image not yet pushed -->
+#### The image
+
+Pushed by `abdur-exam-deployer` in task 47's run 3 (`evidence/c1-task47-push.txt`),
+from the image the Scenario B swarm service was actually running:
+
+```
+source image: ghcr.io/rasel-xs/notes-api:v1.0.69
+v1.0.69: digest: sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf size: 2187
+```
+
+Screenshot with tag and size: `evidence/c2-task49-ecr-image.png`.
+
+**`size: 2187` is not the image size.** It is the size in bytes of the manifest
+document — the JSON that lists the layers. The image's size is the sum of its
+compressed layers, which is what the ECR console reports and what the
+screenshot shows.
+
+#### Only one architecture arrived, and the digest changed
+
+Docker printed this after the push:
+
+```
+Info -> Not all multiplatform-content is present and only the available single-platform image was pushed
+        sha256:88bfcd23eca71d6b785deba7236dbbd59ded3d8aabf0193eca24b4f1beb3c14e -> sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf
+```
+
+Scenario B's CI builds for `linux/amd64` **and** `linux/arm64`, so on GHCR
+`v1.0.69` is a multi-platform *index* (`sha256:88bfcd23…`) pointing at two
+per-architecture manifests. The VPS had only pulled the amd64 half, so only that
+manifest (`sha256:e11a0591…`) could be pushed. Two consequences:
+
+1. **The ECR image is amd64-only.** Fargate's default is `X86_64`, so it runs —
+   but task 50's task definition states `runtimePlatform.cpuArchitecture: X86_64`
+   explicitly rather than relying on the default. On `ARM64` this image would die
+   with `exec format error`, which reads like a corrupt binary rather than an
+   architecture mismatch.
+2. **The same tag names different digests in the two registries.** GHCR's
+   `v1.0.69` is the index; ECR's is the amd64 manifest inside it. The bytes that
+   run are identical, but anything pinned by digest will treat them as different
+   artefacts. That is worth knowing before arguing, as B5 did, that a version tag
+   "names one image": it names one image *per registry*, and a digest is the only
+   identifier that survives being copied between them.
+
+<!-- status: DONE (pending console screenshot) -->
 
 ### Task 50 (8 marks) — Task definition
 
