@@ -127,18 +127,33 @@ denied() {
     echo ">>> NOT A DENIAL -- failed for some other reason (exit $rc)"; not_denials=$((not_denials+1))
   fi
 }
+# Run 2 retired the pull test that used to be here. I had removed
+# ecr:BatchGetImage on the claim that docker push never calls it; the push got
+# every layer up and was then refused at the manifest step with
+# "not authorized to perform: ecr:BatchGetImage", because before writing a
+# manifest the client asks whether it already exists, and ECR authorises that
+# lookup as BatchGetImage. It is granted now, so a pull test would be ALLOWED.
+#
+# The two SCOPE tests that replace it are stronger evidence anyway: they use an
+# action the policy DOES grant, against a resource it does not name. That is
+# precisely the claim task 47 makes -- Resource pins the repository and the
+# service -- and both targets are names that do not exist, so even a wrongly
+# broad policy could not change anything real.
 denied "S3 -- the brief's example"                      aws s3 ls
 denied "ECS read -- policy grants UpdateService only"    aws ecs list-clusters
 denied "ECR list -- not in the policy"                   aws ecr describe-repositories
-denied "ECR PULL -- BatchGetImage was deliberately removed" \
-       aws ecr batch-get-image --repository-name "$REPO" --image-ids imageTag="$TAG"
+denied "SCOPE: a GRANTED ecr action, on a repository the policy does not name" \
+       aws ecr batch-check-layer-availability --repository-name abdur-not-this-repo \
+         --layer-digests sha256:0000000000000000000000000000000000000000000000000000000000000000
+denied "SCOPE: the GRANTED ecs:UpdateService, on a service the policy does not name" \
+       aws ecs update-service --cluster abdur-exam-cluster --service abdur-not-this-svc --desired-count 0
 denied "IAM -- must not be able to see, let alone widen, its own permissions" \
        aws iam list-attached-user-policies --user-name abdur-exam-deployer
 
 stamp
 if [ "$not_denials" -eq 0 ]; then
-  echo "=== all 5 outside-policy calls were genuinely denied ==="
+  echo "=== all 6 outside-policy calls were genuinely denied ==="
 else
-  echo "=== WARNING: $not_denials of 5 were NOT authorization denials -- do not use as evidence ==="
+  echo "=== WARNING: $not_denials of 6 were NOT authorization denials -- do not use as evidence ==="
 fi
 echo "=== Now deactivate and delete this access key in the IAM console. ==="

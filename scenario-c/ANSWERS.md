@@ -148,21 +148,57 @@ It is also harmless on its own. A token only authenticates; every action that
 does anything with it is in the second statement, which is pinned to one
 repository ARN.
 
-#### What I removed from my own first draft
+#### What I removed from my first draft — and had to put one back
 
-The first version also granted `ecr:BatchGetImage` and `ecs:DescribeServices`.
-Both came out on re-reading, because "nothing else" is the requirement:
+The first version granted `ecr:BatchGetImage` and `ecs:DescribeServices`. Both
+came out on re-reading, because "nothing else" is the requirement:
 
-- `ecr:BatchGetImage` is the **pull** action. `docker push` never calls it — it
-  checks layer existence (`BatchCheckLayerAvailability`), uploads, and writes the
-  manifest (`PutImage`). A deployer that can pull can also exfiltrate every image
-  in the repository.
 - `ecs:DescribeServices` is not needed to update a service —
   `aws ecs update-service` returns the updated service description in its own
-  response.
+  response. **This one stayed out.**
+- `ecr:BatchGetImage` is the pull action, and I wrote that `docker push` never
+  calls it. **That was wrong, and the push proved it.**
 
-If either turned out to be necessary, the denial message would name the exact
-missing action, which is the right way to find out.
+I had also written that if either removal turned out to matter, the denial
+message would name the exact missing action. That is what happened. Run 2
+(`evidence/c1-task47-push-run2-batchgetimage.txt`) authenticated as the right
+identity, uploaded **every layer**, and was then refused at the last step:
+
+```
+identity confirmed: arn:aws:iam::750069566598:user/abdur-exam-deployer
+Login Succeeded
+fff4e2c1b189: Pushed   b2cbbfe903b0: Pushed   3af0bc5a14b9: Pushed
+6eb6b44777c2: Pushed   d33c4d5a9e94: Pushed   9760138fb43e: Pushed
+da8c5328bfeb: Pushed   6a0ac1617861: Pushed   d9ca22a5a2c3: Pushed
+4feea04c1543: Pushed
+error from registry: User: arn:aws:iam::750069566598:user/abdur-exam-deployer
+  is not authorized to perform: ecr:BatchGetImage on resource:
+  arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api
+  because no identity-based policy allows the ecr:BatchGetImage action
+```
+
+The failure came **after the layers and before the tag existed** — at the
+manifest. Before writing a manifest, the client asks the registry whether that
+manifest is already there, and ECR authorises that lookup as
+`ecr:BatchGetImage`. AWS's own sample push policy includes it for this reason; I
+had reasoned from the upload protocol and not checked.
+
+It is back in, on the same single-repository ARN. Granting it does let this
+identity pull from `abdur-notes-api`, and the honest risk assessment is that
+this adds very little: an identity that can push arbitrary content into a
+repository already controls what that repository contains, so reading back
+what it can write is not a meaningful new capability. It still cannot touch any
+other repository — which the scope test below demonstrates rather than asserts.
+
+This is also the method working as intended rather than a failure of it. Start
+narrower than you think is needed, and let an explicit denial — which names the
+action, the resource and the reason — tell you what to add. The alternative, a
+broad grant trimmed later, never gets trimmed.
+
+**A side effect worth recording:** ten layers now sit in the repository with no
+manifest referencing them. They are invisible in the console (there is no tag)
+and are simply reused as "Layer already exists" by the next push, so the re-run
+only had to write the manifest.
 
 #### Attached, and nothing else attached
 
@@ -186,21 +222,24 @@ never uses is still a credential that can leak.
 The console's summary of the policy reads **"Allow (2 of 475 services)"** —
 Elastic Container Registry and Elastic Container Service.
 
-#### "Limited: Read, Write" — why Read, if pull was removed?
+#### "Limited: Read, Write" — what the label does and does not mean
 
-The policy summary labels ECR as **Read, Write**, which looks like it contradicts
-removing the pull action. It does not. IAM files every action under an access
-level, and AWS itself classifies two of the push prerequisites as *Read*:
+The console summarises ECR as **Read, Write**. IAM files every action under an
+access level, and AWS classifies three of the granted actions as *Read*:
 
 | Action | AWS access level | What it actually does |
 | --- | --- | --- |
 | `ecr:GetAuthorizationToken` | Read | fetch a login token |
 | `ecr:BatchCheckLayerAvailability` | Read | ask "does this layer already exist?" before uploading it |
-| `ecr:BatchGetImage` | Read | **download an image — not granted** |
+| `ecr:BatchGetImage` | Read | fetch an image manifest — needed by push itself (see above) |
 
-So the label describes the *category* of the granted actions, not a capability.
-It is tested directly rather than argued: the push run below calls
-`ecr batch-get-image` as this user and records the denial.
+When the policy screenshot was taken, only the first two were granted and I
+wrote that "Read" therefore did not mean the user could pull. After run 2 that
+is no longer true: this identity **can** pull from `abdur-notes-api`, and the
+label is now literally accurate. The claim that matters for task 47 is a
+different one — that every non-login action is pinned to **one** repository —
+and that is tested directly: the push run calls a *granted* ECR action against a
+repository the policy does not name, and records the denial.
 
 Evidence: `evidence/c1-task47-user-permissions.png`,
 `evidence/c1-task47-policy-summary.png`.
