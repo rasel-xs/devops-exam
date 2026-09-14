@@ -1,0 +1,88 @@
+source image: ghcr.io/rasel-xs/notes-api:v1.0.69
+will push as: 750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.69
+
+AWS_ACCESS_KEY_ID for abdur-exam-deployer: AWS_SECRET_ACCESS_KEY (not shown): 
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Sun Sep 13 21:56:28 CEST 2026
+=== 1. who am I -- must be abdur-exam-deployer, not rasel ===
+-------------------------------------------------------------------
+|                        GetCallerIdentity                        |
++---------+-------------------------------------------------------+
+|  Account|  750069566598                                         |
+|  Arn    |  arn:aws:iam::750069566598:user/abdur-exam-deployer   |
+|  UserId |  AIDA25I5BJSDFM4574W6I                                |
++---------+-------------------------------------------------------+
+identity confirmed: arn:aws:iam::750069566598:user/abdur-exam-deployer
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Sun Sep 13 21:56:33 CEST 2026
+=== 2. ALLOWED: log in to ECR and push ===
+
+WARNING! Your credentials are stored unencrypted in '/tmp/tmp.lHHDlST887/config.json'.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/go/credential-store/
+
+Login Succeeded
+The push refers to repository [750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api]
+fff4e2c1b189: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+fff4e2c1b189: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+fff4e2c1b189: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+4feea04c1543: Unavailable
+6a0ac1617861: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+3af0bc5a14b9: Unavailable
+fff4e2c1b189: Pushed
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+3af0bc5a14b9: Unavailable
+6eb6b44777c2: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+3af0bc5a14b9: Unavailable
+6eb6b44777c2: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+3af0bc5a14b9: Unavailable
+3af0bc5a14b9: Unavailable
+6eb6b44777c2: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+3af0bc5a14b9: Unavailable
+6eb6b44777c2: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+6eb6b44777c2: Unavailable
+6a0ac1617861: Unavailable
+4feea04c1543: Unavailable
+3af0bc5a14b9: Unavailable
+b2cbbfe903b0: Pushed
+3af0bc5a14b9: Pushed
+d9ca22a5a2c3: Unavailable
+d33c4d5a9e94: Unavailable
+9760138fb43e: Unavailable
+6eb6b44777c2: Pushed
+d9ca22a5a2c3: Unavailable
+d33c4d5a9e94: Pushed
+9760138fb43e: Pushed
+da8c5328bfeb: Pushed
+6a0ac1617861: Pushed
+d9ca22a5a2c3: Pushed
+4feea04c1543: Pushed
+error from registry: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: ecr:BatchGetImage on resource: arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api because no identity-based policy allows the ecr:BatchGetImage action
+
+STOPPED: push failed

@@ -1,0 +1,98 @@
+source image: ghcr.io/rasel-xs/notes-api:v1.0.69
+will push as: 750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.69
+
+AWS_ACCESS_KEY_ID for abdur-exam-deployer: AWS_SECRET_ACCESS_KEY (not shown): 
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Sun Sep 13 22:05:45 CEST 2026
+=== 1. who am I -- must be abdur-exam-deployer, not rasel ===
+-------------------------------------------------------------------
+|                        GetCallerIdentity                        |
++---------+-------------------------------------------------------+
+|  Account|  750069566598                                         |
+|  Arn    |  arn:aws:iam::750069566598:user/abdur-exam-deployer   |
+|  UserId |  AIDA25I5BJSDFM4574W6I                                |
++---------+-------------------------------------------------------+
+identity confirmed: arn:aws:iam::750069566598:user/abdur-exam-deployer
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Sun Sep 13 22:05:50 CEST 2026
+=== 2. ALLOWED: log in to ECR and push ===
+
+WARNING! Your credentials are stored unencrypted in '/tmp/tmp.MTMQGz1IiS/config.json'.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/go/credential-store/
+
+Login Succeeded
+The push refers to repository [750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api]
+fff4e2c1b189: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+6a0ac1617861: Unavailable
+6a0ac1617861: Unavailable
+fff4e2c1b189: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+fff4e2c1b189: Unavailable
+4feea04c1543: Unavailable
+b2cbbfe903b0: Unavailable
+6a0ac1617861: Unavailable
+fff4e2c1b189: Layer already exists
+b2cbbfe903b0: Layer already exists
+6a0ac1617861: Layer already exists
+6eb6b44777c2: Layer already exists
+d33c4d5a9e94: Unavailable
+da8c5328bfeb: Unavailable
+4feea04c1543: Layer already exists
+3af0bc5a14b9: Layer already exists
+d9ca22a5a2c3: Layer already exists
+9760138fb43e: Unavailable
+9760138fb43e: Layer already exists
+d33c4d5a9e94: Layer already exists
+da8c5328bfeb: Layer already exists
+v1.0.69: digest: sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf size: 2187
+
+ Info -> Not all multiplatform-content is present and only the available single-platform image was pushed
+         sha256:88bfcd23eca71d6b785deba7236dbbd59ded3d8aabf0193eca24b4f1beb3c14e -> sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf
+push exit code: 0
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Sun Sep 13 22:05:55 CEST 2026
+=== 3. DENIED: everything outside the policy ===
+
+--- S3 -- the brief's example
+$ aws s3 ls
+
+aws: [ERROR]: An error occurred (AccessDenied) when calling the ListBuckets operation: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: s3:ListAllMyBuckets because no identity-based policy allows the s3:ListAllMyBuckets action
+>>> DENIED, as intended (exit 254)
+
+--- ECS read -- policy grants UpdateService only
+$ aws ecs list-clusters
+
+aws: [ERROR]: An error occurred (AccessDeniedException) when calling the ListClusters operation: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: ecs:ListClusters on resource: * because no identity-based policy allows the ecs:ListClusters action
+>>> DENIED, as intended (exit 254)
+
+--- ECR list -- not in the policy
+$ aws ecr describe-repositories
+
+aws: [ERROR]: An error occurred (AccessDeniedException) when calling the DescribeRepositories operation: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: ecr:DescribeRepositories on resource: arn:aws:ecr:eu-north-1:750069566598:repository/* because no identity-based policy allows the ecr:DescribeRepositories action
+>>> DENIED, as intended (exit 254)
+
+--- SCOPE: a GRANTED ecr action, on a repository the policy does not name
+$ aws ecr batch-check-layer-availability --repository-name abdur-not-this-repo --layer-digests sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+aws: [ERROR]: An error occurred (AccessDeniedException) when calling the BatchCheckLayerAvailability operation: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: ecr:BatchCheckLayerAvailability on resource: arn:aws:ecr:eu-north-1:750069566598:repository/abdur-not-this-repo because no identity-based policy allows the ecr:BatchCheckLayerAvailability action
+>>> DENIED, as intended (exit 254)
+
+--- SCOPE: the GRANTED ecs:UpdateService, on a service the policy does not name
+$ aws ecs update-service --cluster abdur-exam-cluster --service abdur-not-this-svc --desired-count 0
+
+aws: [ERROR]: An error occurred (AccessDeniedException) when calling the UpdateService operation: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: ecs:UpdateService on resource: arn:aws:ecs:eu-north-1:750069566598:service/abdur-exam-cluster/abdur-not-this-svc because no identity-based policy allows the ecs:UpdateService action
+>>> DENIED, as intended (exit 254)
+
+--- IAM -- must not be able to see, let alone widen, its own permissions
+$ aws iam list-attached-user-policies --user-name abdur-exam-deployer
+
+aws: [ERROR]: An error occurred (AccessDenied) when calling the ListAttachedUserPolicies operation: User: arn:aws:iam::750069566598:user/abdur-exam-deployer is not authorized to perform: iam:ListAttachedUserPolicies on resource: user abdur-exam-deployer because no identity-based policy allows the iam:ListAttachedUserPolicies action. Go to https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/authorization-details/dieymt39ffiu6otdtusgzlmno for complete details, or call the GetRequestAuthorizationDetails API with the following authorization id: dieymt39ffiu6otdtusgzlmno
+>>> DENIED, as intended (exit 254)
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Sun Sep 13 22:06:12 CEST 2026
+=== all 6 outside-policy calls were genuinely denied ===
+=== Now deactivate and delete this access key in the IAM console. ===

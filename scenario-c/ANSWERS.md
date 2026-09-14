@@ -63,12 +63,18 @@ Budgets                         1 over budget
 
 **None of the $10.61 is mine.** At that point I had created an empty ECR
 repository, an ECS cluster with no tasks, and an IAM user and policy — all of
-which cost nothing while idle. The baseline records what *was* billable: one
-running ECS service and two Elastic IPs belonging to other students. $10.61 over
+which cost nothing while idle. The baseline (`evidence/c0-account-baseline.md`, from
+`evidence/c0-global-view.png` and `evidence/c0-tag-editor.png`) records what
+*was* billable: one running ECS service and two Elastic IPs belonging to other
+students. $10.61 over
 14 days is about $0.76 a day, inside the $0.50–1.00 range the baseline estimated
-from those resources before the figure was visible. The daily Cost Explorer view
-(`evidence/c0-cost-explorer-daily.png`) shows the spend accruing before my first
-resource existed (the policy, 2026-09-13 00:49 +06:00).
+from those resources before the figure was visible. Cost Explorer's default six-month view, grouped by
+service (`evidence/c0-cost-explorer-6-months.png`), shows **$0.00 across
+March–August** with a service count of 0, so every dollar of the overspend is
+September's. I had intended to capture a *daily* September view showing the
+spend accruing before my first resource existed (the policy, 2026-09-13 00:49
++06:00), but the screenshot taken is the default range, not the daily one, so
+that specific claim rests on the baseline rather than on a Cost Explorer graph.
 
 "Forecast: Data unavailable" is expected rather than a permission problem — Cost
 Explorer needs enough usage history to project from, and last month was $0.
@@ -99,7 +105,9 @@ AccessDenied).
 
 **User:** `abdur-exam-deployer` — not `exam-deployer`, which already belonged to
 another student in this shared account (see *Constraints* above).
-**Policy:** [`iam/abdur-exam-deployer-policy.json`](iam/abdur-exam-deployer-policy.json),
+**Policy:** [`iam/abdur-exam-deployer-policy.json`](iam/abdur-exam-deployer-policy.json)
+(`evidence/c1-task47-policy-json-editor.png` shows version 1 as first pasted,
+before `ecr:BatchGetImage` was added back — see below),
 `arn:aws:iam::750069566598:policy/abdur-exam-deployer-policy`.
 
 ```json
@@ -120,7 +128,8 @@ another student in this shared account (see *Constraints* above).
         "ecr:InitiateLayerUpload",
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
-        "ecr:PutImage"
+        "ecr:PutImage",
+        "ecr:BatchGetImage"
       ],
       "Resource": "arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api"
     },
@@ -247,8 +256,9 @@ Evidence: `evidence/c1-task47-user-permissions.png`,
 #### The push, and six denials — run 3
 
 [`c1-task47-push.sh`](c1-task47-push.sh), transcript
-`evidence/c1-task47-push.txt`, screenshots `evidence/c1-task47-push-success.png`
-and `evidence/c1-task47-denied.png`.
+`evidence/c1-task47-push.txt`. The transcript is the evidence for this run: the
+script stamps `EXAM_TOKEN | date` before each section, so every block below
+carries the token inline. No terminal screenshots of run 3 were kept.
 
 ```
 identity confirmed: arn:aws:iam::750069566598:user/abdur-exam-deployer
@@ -312,15 +322,20 @@ ls: cannot access '/tmp/tmp.lHHDlST887': No such file or directory
 ```
 
 The access key was deactivated and deleted immediately after run 3
-(`evidence/c1-task47-key-deleted.png`). The key ID that appears in the
-transcripts is redacted in the committed copies; it identifies a key that no
-longer exists and was never secret on its own, but it has no reason to be in a
-public repository.
+(`evidence/c1-task47-key-deleted.png`). I wrote at first that the key ID in the transcripts had been redacted. There
+was nothing to redact: the committed transcripts contain no key ID at all. What
+you type at a prompt is echoed to the screen by the terminal, not written by the
+program, so it never enters the pipe that `tee` records — the ID was visible on
+screen and absent from the file. (It identifies a deleted key and was never a
+secret on its own.)
 
 #### Run 1 produced false evidence, and that is why the script checks
 
-The first run is kept as `evidence/c1-task47-push-run1-paste-ahead.txt` because
-of what it nearly got away with. A multi-line paste arrived while the script was
+Run 1's transcript was **not preserved**: before it could be renamed, further
+accidental re-runs — old terminal output pasted back into the shell, which
+executed the `bash … | tee` lines inside it — overwrote the same file. The lines
+quoted here are from the terminal output captured during the session. It is
+worth recording because of what it nearly got away with. A multi-line paste arrived while the script was
 starting, and its own prompts consumed the still-buffered lines — the "access
 key ID" was `cd /root/abdur-exam`. Every call then failed with
 `IncompleteSignature` or `AuthorizationHeaderMalformed`: a space inside the key
@@ -478,6 +493,14 @@ v1.0.69: digest: sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6
 
 Screenshot with tag and size: `evidence/c2-task49-ecr-image.png`.
 
+```
+Image tags  v1.0.69
+Type        Image
+Created at  14 September 2026, 02:05:54 (UTC+06)
+Image size  50.48 MB
+Digest      sha256:e11a0591643dc87…      <- matches the push output above
+```
+
 **`size: 2187` is not the image size.** It is the size in bytes of the manifest
 document — the JSON that lists the layers. The image's size is the sum of its
 compressed layers, which is what the ECR console reports and what the
@@ -599,7 +622,9 @@ security theatre. It is done properly in task 53's rebuild instead.
 
 Task `170d12b3c1534ffeaa71aa9b19917367`, log stream
 `notes-api/notes-api/170d12b3c1534ffeaa71aa9b19917367`
-(`evidence/c2-task50-cloudwatch-logs.png`, `evidence/c2-task50-running-task.png`):
+(`evidence/c2-task50-cloudwatch-logs.png`, `evidence/c2-task50-running-task.png`;
+`evidence/c2-task50-task-provisioning.png` is the same task at launch, 00:16
+`PROVISIONING` / health `UNKNOWN`, seven minutes before `RUNNING` / `HEALTHY`):
 
 ```
 2026-09-14T18:16:42.439Z  migrations applied
