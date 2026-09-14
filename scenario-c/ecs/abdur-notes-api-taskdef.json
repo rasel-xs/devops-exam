@@ -1,0 +1,48 @@
+{
+  "family": "abdur-notes-api",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/abdur-ecs-task-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "notes-api",
+      "image": "<ACCOUNT_ID>.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.69",
+      "essential": true,
+      "command": ["sh", "-c", "node db/migrate.js && node src/server.js"],
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "3000" },
+        { "name": "DATABASE_URL", "value": "postgres://notes@<RDS_ENDPOINT>:5432/notes?sslmode=no-verify" }
+      ],
+      "secrets": [
+        { "name": "PGPASSWORD", "valueFrom": "<RDS_MASTER_SECRET_ARN>:password::" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/healthz || exit 1"],
+        "interval": 10,
+        "timeout": 3,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/abdur-notes-api",
+          "awslogs-region": "eu-north-1",
+          "awslogs-stream-prefix": "notes-api"
+        }
+      }
+    }
+  ],
+  "tags": [
+    { "key": "exam-token", "value": "root-vmi3536696-1788282556-1536d427" }
+  ]
+}
