@@ -521,7 +521,111 @@ Deliverables: the task definition JSON committed here with the account ID
 redacted, a screenshot of the running task, and a screenshot of the app's logs
 in CloudWatch Logs.
 
-<!-- status: not started -->
+**Task definition:** [`ecs/abdur-notes-api-taskdef.json`](ecs/abdur-notes-api-taskdef.json),
+registered as `abdur-notes-api:1`. The account ID is `<ACCOUNT_ID>` throughout the
+committed copy, including inside the secret ARN.
+
+| Requirement | How |
+| --- | --- |
+| Container from ECR | `…dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.69`, pinned to `X86_64` — the ECR image is the amd64 manifest only (task 49) |
+| Port 3000 | `portMappings` → 3000/tcp, `networkMode: awsvpc` as Fargate requires |
+| Logs to CloudWatch | `awslogs` driver → `/ecs/abdur-notes-api`, pre-created with 3-day retention |
+| Container health check | `wget --spider http://127.0.0.1:3000/healthz`, interval 10 s, 3 retries, 15 s start period |
+| DB connection env | `DATABASE_URL` in `environment`, `PGPASSWORD` in `secrets` — see below |
+
+#### The database, and a password nobody has ever seen
+
+The database is RDS PostgreSQL 16.15 on `db.t3.micro`, single-AZ, 20 GiB gp3,
+**not publicly accessible**, in security group `abdur-notes-db-sg` whose only
+inbound rule is 5432 from `abdur-notes-app-sg`. The rule names a security group
+rather than an address because Fargate tasks get a new IP on every start, and
+autoscaling (task 52) adds tasks whose addresses cannot be known in advance.
+
+That the database is private is shown rather than asserted. Its DNS name resolves
+from anywhere, but to a VPC-internal address:
+
+```
+$ getent hosts abdur-notes-db.c9c4ku2mkinq.eu-north-1.rds.amazonaws.com      # from the VPS
+172.31.41.223   abdur-notes-db.c9c4ku2mkinq.eu-north-1.rds.amazonaws.com
+```
+
+**Master credentials are managed by Secrets Manager**, so RDS generated the
+password and stored it, and no person has read, copied or typed it. The app
+needed no change and the image no rebuild to consume it. The pool is built as
+`connectionString: process.env.DATABASE_URL || …`, and node-postgres resolves
+each connection field as the value parsed from that URL, falling back to
+`process.env['PG' + KEY]` (`pg/lib/connection-parameters.js`). So:
+
+```
+environment  DATABASE_URL = postgres://notes@abdur-notes-db…:5432/notes?sslmode=no-verify   # no password in it
+secrets      PGPASSWORD   = <rds master secret ARN>:password::                             # injected at task start
+```
+
+The execution role reads that one secret and nothing else
+([`iam/abdur-ecs-task-execution-secret-policy.json`](iam/abdur-ecs-task-execution-secret-policy.json)).
+Its `Resource` ends in `-??????`: Secrets Manager appends six random characters
+to every secret ARN, and each `?` matches exactly one, so the pattern cannot also
+match a different secret whose name begins the same way — which `*` would.
+
+Given that the task 47 push was derailed twice by pasted text landing in a
+prompt, a credential that is never handled by a person was worth more here than
+it would be in a tidier workflow.
+
+**TLS, honestly.** RDS for PostgreSQL enforces TLS, and Node's default CA store
+does not contain the RDS CA, so `sslmode=verify-full` would refuse the
+connection. `no-verify` encrypts without verifying the server's certificate. The
+RDS console's own connection snippet shows the correct form —
+`sslmode=verify-full sslrootcert=global-bundle.pem` — and doing that inside the
+container means shipping the bundle in the image. Downloading it at start-up
+with busybox `wget` would not verify that download either, so it would be
+security theatre. It is done properly in task 53's rebuild instead.
+
+#### Why these settings
+
+- **The health check is repeated in the task definition** because ECS ignores an
+  image's `HEALTHCHECK`; only the task definition's check drives task health.
+- **It checks `/healthz`, the liveness probe, not `/readyz`.** A failing
+  container health check makes ECS replace the task. If the database has a bad
+  minute, killing and restarting every app task would turn a database problem
+  into an application outage as well. Readiness belongs on the load balancer,
+  which can stop *sending* traffic without destroying anything — see task 51.
+- **Public IP on.** The default VPC has no NAT gateway, so the task reaches ECR,
+  CloudWatch Logs and Secrets Manager over the internet. `abdur-notes-app-sg` has
+  no inbound rule at all, so the address accepts nothing; it is outbound only.
+- **Launch type `FARGATE`, not a capacity provider,** because the cluster has no
+  default capacity provider strategy.
+
+#### It ran, first time
+
+Task `170d12b3c1534ffeaa71aa9b19917367`, log stream
+`notes-api/notes-api/170d12b3c1534ffeaa71aa9b19917367`
+(`evidence/c2-task50-cloudwatch-logs.png`, `evidence/c2-task50-running-task.png`):
+
+```
+2026-09-14T18:16:42.439Z  migrations applied
+2026-09-14T18:16:43.066Z  {"level":"info","msg":"listening","host":"ip-172-31-33-76.eu-north-1.compute.internal","port":3000,"version":"v1.0.69","pid":1}
+```
+
+The migration script retries every two seconds and logs the database error each
+time it fails. It logged none, so the security-group rule, the secret, TLS and
+the database all worked on the first connection attempt.
+
+Two further details in the second line matter later. `host` is the task's
+private address, which is what will make responses from different tasks
+distinguishable behind the load balancer in task 51. And `pid` is 1 even though
+the command is `sh -c "… && node src/server.js"`: busybox `sh` exec-replaces
+itself for the last command of a list (B2 task 28), so when ECS stops the task
+its SIGTERM reaches Node's graceful-shutdown handler directly (B4 task 40).
+
+#### Cost of the database
+
+The RDS console offered no free-tier template for this account, and estimated
+**$16.27 a month** — about **$0.022 an hour**. It exists for the duration of
+tasks 50–54 and is deleted in task 63. Deleted, not stopped: a stopped RDS
+instance still bills for storage, and AWS starts it again automatically after
+seven days.
+
+<!-- status: DONE except the RUNNING/HEALTHY screenshot -->
 
 ### Task 51 (8 marks) — Service behind a load balancer
 
