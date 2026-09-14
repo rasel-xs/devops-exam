@@ -349,7 +349,69 @@ Four actions through the IAM Policy Simulator (console or
 `aws iam simulate-principal-policy`): two that must be allowed, two that must be
 denied. Screenshots of the results.
 
-<!-- status: not started -->
+Run in the console's (new) IAM Policy Simulator against `abdur-exam-deployer`,
+with its one identity policy selected and **Service control policies switched
+on**, so the result reflects organization-level controls as well as mine.
+Screenshot: `evidence/c1-task48-simulator.png`.
+
+| Service | Action | Resource | Result | Result details |
+| --- | --- | --- | --- | --- |
+| ECR | `PutImage` | `…:repository/abdur-notes-api` | **Allowed** | Explicit allow in 1 statement(s) |
+| ECS | `UpdateService` | `…:service/abdur-exam-cluster/abdur-notes-svc` | **Allowed** | Explicit allow in 1 statement(s) |
+| S3 | `DeleteBucket` | `arn:aws:s3:::abdur-any-bucket` | **Denied** | Implicit deny due to no statement(s) matching |
+| IAM | `CreateAccessKey` | `…:user/abdur-exam-deployer` | **Denied** | Implicit deny due to no statement(s) matching |
+
+**Why these four.** `DeleteBucket` is the brief's own example of something
+outside the policy. `CreateAccessKey` on the deployer itself is the more
+important denial: an identity that can mint its own credentials can outlive any
+key you revoke, so "cannot extend its own access" is one of the properties least
+privilege exists to guarantee. The two allowed actions are the two capabilities
+the policy is for.
+
+**Reading the details column.** "Explicit allow in **1** statement" for each
+allowed action matches the policy's shape — `PutImage` is granted only by the
+repository statement and `UpdateService` only by the service statement, so no
+permission is granted twice. "Implicit deny due to no statement(s) matching" is
+the same verdict the real CLI calls in task 47 returned as "no identity-based
+policy allows", reached here by evaluation rather than by request — and with SCPs
+included, so no organization policy is involved in either direction.
+
+#### Scope, and a behaviour of the new simulator worth knowing
+
+The first attempt included a second ECR row — `InitiateLayerUpload` against
+`abdur-not-this-repo` — alongside `PutImage` against `abdur-notes-api`. Editing
+one row's repository ARN changed the other's as well. The new simulator holds
+**one resource ARN per resource type** for a whole simulation, so two actions of
+type `repository` cannot be simulated against two different repositories in one
+run. Had I not noticed, `PutImage` would have been simulated against the wrong
+repository and reported **Denied** — a false negative that reads exactly like a
+broken policy.
+
+So each simulation keeps one row per resource type, and the scope test is a
+second run with the repository changed and nothing else
+(`evidence/c1-task48-simulator-scope.png`): `PutImage`, the same policy, against
+`abdur-not-this-repo`.
+
+<!-- scope-run result pending -->
+
+#### What the simulator cannot tell you
+
+The simulator sends no requests. It evaluates each (action, resource) pair
+against the policy documents in isolation, which answers "does this policy allow
+this action here?" and not "will this operation work?".
+
+Task 47 is the demonstration. Against the policy's first version — without
+`ecr:BatchGetImage` — the simulator would have reported `PutImage` as
+**Allowed**, correctly, because it was. The real `docker push` still failed,
+because pushing an image is a sequence of API calls and one of them was missing.
+The simulator has no notion of which actions a workflow needs, only of whether
+each one is individually permitted.
+
+That is why task 47 is proven by a real push and task 48 by the simulator, and
+why neither replaces the other: the simulator is fast, safe and exhaustive about
+the policy; only the real call is evidence about the operation.
+
+<!-- status: DONE except scope screenshot -->
 
 ---
 
