@@ -392,7 +392,15 @@ second run with the repository changed and nothing else
 (`evidence/c1-task48-simulator-scope.png`): `PutImage`, the same policy, against
 `abdur-not-this-repo`.
 
-<!-- scope-run result pending -->
+```
+ecr:PutImage   arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api      Allowed  Explicit allow in 1 statement(s)
+ecr:PutImage   arn:aws:ecr:eu-north-1:750069566598:repository/abdur-not-this-repo  Denied   Implicit deny due to no statement(s) matching
+```
+
+Same identity, same policy, same action. Changing only the repository turns an
+explicit allow into an implicit deny, which is the `Resource` element of the
+repository statement doing exactly what task 47 claims — reached this time by
+policy evaluation, where task 47's run 3 reached it by a real API call.
 
 #### What the simulator cannot tell you
 
