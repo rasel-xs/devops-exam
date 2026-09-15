@@ -49,9 +49,29 @@ Format: `YYYY-MM-DD HH:MM — what I did — what went wrong — how long`
 | 09-04 18:10 | B5 task 45 | Changed my own plan: "wrong service name" proves nothing, so failure 3 deployed a **well-formed tag that was never built**. Rollback in 17s; the three replicas read "Running 24–25 minutes" *after* the bad deploy, so they were never touched. Also produced the `Rejected` task B4 task 38 could not |
 | 09-04 18:29 | B5 task 46 | The concurrency group caught a real race unprompted: two pushes 110s apart, the older `waiting` at the approval gate and holding the group, the **newer** one `pending` behind it |
 | 09-05 00:30 | Audit | Cross-checked every evidence reference in both directions. Found `INCOMPLETE.md` still claiming B1–B5 were unrun, task 12 with no answer section, and eight evidence files cited by nothing |
+| 09-12 | C0 constraints | Opened every service console before creating anything. Billing figures `Access denied`, Budgets already "1 over budget", and `exam-deployer` already taken by another student — everything of mine prefixed `abdur-` |
+| 09-13 00:49 | C1 task 47 | Push-and-deny script run 1 "proved" six denials — all were malformed-signature errors, because a pasted command block had answered the key prompt. Hardened the script. Run 2: I had claimed `docker push` never needs `ecr:BatchGetImage`; the push was refused at the manifest step. Run 3 clean |
+| 09-14 02:05 | C2 task 49 | `v1.0.69` pushed to ECR, amd64 manifest only — digest differs from the GHCR index |
+| 09-15 00:16 | C2 task 50 | Standalone Fargate task against private RDS: migrations applied on the first attempt. Stopped at 00:39 — exit code 0, graceful SIGTERM |
+| 09-15 01:29 | C2 | CloudShell refused ("account verification in progress"). Installed AWS CLI on the laptop, `aws login` — no access key |
+| 09-15 01:37 | C2 task 51 | Run 1 stopped: my JMESPath existence check miscounted and re-added a rule that existed. Run 2: ALB + 2 tasks, 12 requests split 6/6 |
+| 09-15 01:51 | C2 task 52 | The brief's `hey -c 50` did not scale: CPU plateaued at 40 %, limited by the 185 ms round trip from Dhaka. Run 2 stopped on re-registering a tagged scalable target. Run 3 (`-c 120`): 2 → 3 at 02:06:29 — **after** the load had ended — and back to 2 at 02:24 |
+| 09-15 02:37 | C2 task 54 | Broke the health-check path. Users saw 200 throughout (ALB fail-open) while ECS killed four tasks in four minutes. Fixed in 44 s |
+| 09-15 18:34 | C2 | Resumed after 16 h: login expired, the two graph screenshots had been retaken with the wrong time range. Rendered both graphs with `get-metric-widget-image` for the fixed window |
+| 09-15 18:56 | C2 task 53 | Deploy run #34 would not start: a B5 approval from 09-04 had held `deploy-main` for eleven days and silently cancelled every later deploy. Rejected it |
+| 09-15 19:07 | C2 task 53 | Attempt 1: `AssumeRoleWithWebIdentity` denied — this repo uses GitHub's immutable OIDC subject. Attempt 2: `GetDownloadUrlForLayer` denied during the image copy. Attempt 3 green: revision 2, `verify-full` TLS to RDS |
+| 09-15 19:24 | C3 task 57 | CloudFront refused by the same account-verification state. Fell back to a bucket policy on `public/*` |
+| 09-15 19:36 | C3 tasks 55–58 | All proofs first time: upload 200; `Request has expired` at 61 s; public/private/presigned; acme → globex 403 before signing |
+| 09-15 21:26 | C4 install | Run 1: `nginx -t` failed — a placeholder substituted inside a comment. Restore worked, nothing reloaded. Run 2 at 21:29 clean |
+| 09-15 21:34 | C4 tasks 59–62 | 59–62.2 proved. 62.3/62.4 "fixed" halves checked inside the nginx reload window and showed the old behaviour. Installer now waits; re-run at 21:48 correct three times each |
+| 09-15 22:04 | C5 task 63 | Deleted every `abdur` resource in dependency order in six minutes; brief's listings empty apart from another student's bucket |
 
 
-**Honesty note on this file.** The Scenario A rows were written as the work
+**Honesty note on this file.** The Scenario C rows (09-12 onward) were added on
+09-15 from the timestamps inside `scenario-c/evidence/`, the git log and the
+GitHub Actions run history, not typed as each thing happened.
+
+The Scenario A rows were written as the work
 happened. The Scenario B rows (09-03 onward) were reconstructed on 09-05 from
 git commit timestamps and the timestamps inside `evidence/`, because during B
 I was writing findings straight into ANSWERS.md and let this file lag. The

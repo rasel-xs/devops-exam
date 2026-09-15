@@ -841,7 +841,7 @@ run that scaled `evidence/c2-task52-autoscaling.txt`. Screenshots:
 The two graphs are **rendered by CloudWatch itself** with
 `aws cloudwatch get-metric-widget-image`, for the fixed window 01:40–02:50 (+06),
 from the widget definitions saved beside them
-(`evidence/c2-task52-cpu-graph.widget.json`, `…task-count.widget.json`). The
+(`evidence/c2-task52-cpu-graph.widget.json`, `evidence/c2-task52-task-count.widget.json`). The
 exam token is in each graph's title, and the load runs and the task 54 break are
 shaded from the script's own timestamps. They replace console screenshots that
 had to be retaken the next day, when the console's relative time range no longer
@@ -888,8 +888,8 @@ switched off again in task 63.
 
 | Run | Load | Outcome |
 | --- | --- | --- |
-| 1 (`…-run1-c50.txt`) | the brief's `hey -z 5m -c 50`, 01:51–01:56 | **no scale-out.** CPU plateaued at **40 %**. 64,113 responses, all 200, **213 req/s** |
-| 2 (`…-run2-stopped.txt`) | — | stopped at setup: re-registering the existing scalable target *with tags* is a `ValidationException`. Script now registers only if absent |
+| 1 (`evidence/c2-task52-autoscaling-run1-c50.txt`) | the brief's `hey -z 5m -c 50`, 01:51–01:56 | **no scale-out.** CPU plateaued at **40 %**. 64,113 responses, all 200, **213 req/s** |
+| 2 (`evidence/c2-task52-autoscaling-run2-stopped.txt`) | — | stopped at setup: re-registering the existing scalable target *with tags* is a `ValidationException`. Script now registers only if absent |
 | 3 (`…autoscaling.txt`) | `hey -z 5m -c 120`, 02:00:50–02:06:11 | **scaled 2 → 3 → 2.** 81,309 responses, all 200, **270 req/s** |
 
 Run 1 was limited by **the client, not the service**. The fastest response in
@@ -905,6 +905,12 @@ over the same minutes, from CloudWatch:
 run 1  01:51-01:55   14.6  20.6  21.5  20.9  21.6
 run 3  02:01-02:05   24.5  26.2  25.0  24.9  25.2
 ```
+
+The database had been seeded for this test by a one-off Fargate task running
+`node db/seed.js` in the app's own security group — the only thing that can
+reach the private RDS instance — with the password injected from Secrets
+Manager (5 tenants, 50,000 notes, 150,000 tags in 3.0 s, exit 0;
+[`c2-seed-rds.sh`](c2-seed-rds.sh), `evidence/c2-seed-rds.txt`).
 
 `?q=abc` matches within the first few hundred rows of acme's notes, so
 `LIMIT 50` stops the "unindexed" scan early; the app's cost is serialising an
@@ -1944,7 +1950,7 @@ caught it); C3's attachment keys are checked against the tenant before signing;
 the tenant slug cache maps slug → id and tenants are never deleted; the custom
 domain lookup is deliberately uncached.
 
-<!-- status: DONE except retaking the 62.3 and 62.4 screenshots (the files are still demo run 1) -->
+<!-- status: DONE -->
 
 ---
 
@@ -2043,13 +2049,32 @@ security groups / ECR / S3 / log groups / IAM roles / IAM users / IAM policies /
 
 #### Billing
 
-The Billing screenshot is compared with `evidence/c0-billing-mtd.png` (month to
-date $10.61 on 2026-09-14, before any billable resource of mine existed). Two
-cautions in reading it: the figures are for the **whole shared account**, so
-other students' spend continues to appear; and AWS billing data lags by up to a
-day, so the last hours of my ALB, Fargate tasks and RDS will still accrue into
-the total after deletion. The proof that nothing of mine keeps running is the
-listings above, not the bill.
+`evidence/c5-task63-billing.png`, taken 2026-09-15 22:59 (+06), 49 minutes
+after the cleanup finished, with the exam token alongside:
+
+| | 2026-09-14 (`c0-billing-mtd.png`) | 2026-09-15, after cleanup |
+| --- | --- | --- |
+| Month-to-date | $10.61 | **$17.98** |
+| Forecast for the month | data unavailable | $44.05 |
+| Highest-cost service | — | Elastic Container Service, $7.73 MTD |
+| Active services / regions | — | 14 services, 17 regions |
+
+Reading it honestly:
+
+- **These are account-wide figures.** The $7.37 rise between the two
+  screenshots covers every student's resources for about a day and a half —
+  including another student's ECS service that the baseline found running before
+  I started — so it cannot be read as my spend. The ECS figure in particular is
+  every Fargate task in the account this month.
+- **It cannot be split by owner from here.** Every resource of mine carried the
+  `exam-token` tag, but a tag only appears in billing once it is activated as a
+  *cost allocation tag*, which is a billing-administrator setting and applies
+  only to usage after activation.
+- **AWS billing lags by up to a day**, so the final hours of my ALB, tasks and
+  RDS will still be added after this screenshot.
+
+My own estimate (list prices, below) is **about $1.6–2.0**. The proof that
+nothing of mine keeps costing is the listings above, not the bill.
 
 Estimated cost of what I ran (list prices, eu-north-1): RDS `db.t3.micro` about
 **$0.022/h** from 2026-09-14 ~23:30 to 2026-09-15 22:08 (~22.5 h ≈ $0.50 incl.
@@ -2069,4 +2094,4 @@ $1.6–2.0 in total**.
 - Locally: the AWS CLI installed for C2–C5 and `hey` are removed from the laptop
   after the final evidence (see the note below).
 
-<!-- status: DONE except the billing screenshot -->
+<!-- status: DONE -->

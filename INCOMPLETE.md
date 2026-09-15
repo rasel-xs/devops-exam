@@ -5,7 +5,7 @@ Honest status, kept current. The marking rule this file exists for:
 > A task failed but diagnosed correctly earns up to 60%.
 > A task skipped silently earns 0.
 
-**Last updated: 2026-09-05.**
+**Last updated: 2026-09-15.**
 
 ## What is finished
 
@@ -17,49 +17,67 @@ Honest status, kept current. The marking rule this file exists for:
 | B3 — metrics, Prometheus, Grafana (29–34) | 32 | **complete**, executed |
 | B4 — Swarm (35–40) | 26 | **complete**, executed |
 | B5 — CI/CD (41–46) | 30 | **complete**, executed |
+| C1 — IAM (47–48) | 8 | **complete**, executed |
+| C2 — ECS, ALB, autoscaling, CI/CD, debugging (49–54) | 36 | **complete**, executed |
+| C3 — S3 and presigned URLs (55–58) | 20 | **complete**, executed |
+| C4 — multi-tenancy with subdomains (59–62) | 26 | **complete**, executed on the VPS; all four 62 points demonstrated |
+| C5 — clean up (63) | 4 | **complete**: every `abdur` resource deleted and verified |
 
-Every number in `scenario-a/ANSWERS.md` and `scenario-b/ANSWERS.md` is measured,
-and every task has a transcript in the corresponding `evidence/` directory.
+Every number in the three `ANSWERS.md` files is measured, and every task has a
+transcript or screenshot in the corresponding `evidence/` directory.
 Where a prediction of mine turned out wrong, the wrong prediction and the
 measurement that corrected it are both kept — there are around twenty of them.
 
-## Scenario C — not started (94 marks at risk)
+## Scenario C — complete, with these declared deviations
 
-- **Status:** not started. This is the single largest outstanding item.
-- **Why:** the copy of the brief I was working from was **truncated
-  mid-sentence** in the cost warning — "use free tier. `t3.micro` o…" — so the
-  individual task numbers and requirements were never available to me.
-- **How far I got:** `scenario-c/ANSWERS.md` records what the section header
-  establishes, plus the pieces already built that feed into it — an OIDC-ready
-  `deploy.yml` with `id-token: write` and no static AWS keys anywhere, the
-  trust-policy `sub` condition scoping the role to one repo and branch, the
-  security-group reasoning about port 22, and the multi-tenant app itself.
-- **Next:** obtain the full Scenario C text, transcribe the tasks, execute.
+Nothing in C was skipped. These are the places where what was built differs
+from the brief's literal wording, each explained in `scenario-c/ANSWERS.md`:
+
+1. **`exam-deployer` is `abdur-exam-deployer`** (task 47) — the plain name
+   already belonged to another student in the shared AWS account.
+2. **CloudShell could not be used** — the account was "verification in
+   progress", an owner-only state. C2–C5 ran from the AWS CLI on my laptop,
+   authenticated with `aws login` (no access key for the console user).
+3. **Task 55's "leave all public access blocked on" is not literally true at the
+   end.** Task 57 needs `public/*` readable by a plain URL; the design that keeps
+   every block on (CloudFront with Origin Access Control) was refused by the same
+   account-verification state. The two *policy* blocks were turned off on that one
+   bucket, the two ACL blocks stayed on, and the bucket policy allows `GetObject`
+   on `public/*` only.
+4. **C4 runs on port 8141, not 80** — port 80's default server on the shared VPS
+   belongs to another student, and 62.1 needs my own default server. Domains are
+   real public DNS (nip.io wildcard, sslip.io as the second domain); no
+   `/etc/hosts`.
+5. **Two C4 runs failed before they succeeded**, both kept as evidence: the
+   installer's first `nginx -t` failed (a placeholder substituted inside a
+   comment — the safety net restored the old config, nothing reloaded), and the
+   first demo of 62.3/62.4 checked "fixed" inside the nginx reload window.
+6. **How C was done:** from task 51 onward the scripts and code were written and
+   run by Claude Code at my request; I ran every step that needed me (browser
+   login, GitHub production approvals, every command on the shared VPS) and took
+   every screenshot. Recorded in `AI_PROMPTS.md`, entries 10–15.
 
 ## Bonus — AI_PROMPTS.md
 
-**Complete: 9 entries against a minimum of 8.** Seven of the nine are cases
+**Complete: 15 entries against a minimum of 8.** Thirteen of them are cases
 where the answer I was given, or the prediction I wrote from it, was wrong and a
 measurement corrected it — which is the part the marks are for, rather than the
 prompts themselves.
 
 ## Screenshots still to capture
 
-The prose and the machine-readable transcripts for these exist; the image files
-do not yet:
-
 | File | Source |
 | --- | --- |
-| `scenario-b/evidence/b5-pr-failed.png` | Actions run 33884146208 |
-| `scenario-b/evidence/b5-pr-passed.png` | Actions run 33884321458 |
-| `scenario-b/evidence/b5-ghcr-tags.png` | the GHCR package page |
-| `scenario-b/evidence/b5-approval-approved.png` | Actions run 33903125661 |
-| `scenario-b/evidence/b5-vps-new-version.png` | `http://169.58.246.108:3140/healthz` |
+| `scenario-b/evidence/b5-approval-approved.png` | Actions run 33903125661 — the production approval |
 
-Every one of these is also captured as text in the same directory
-(`b5-pr-failed.txt`, `b5-cache.txt`, `b5-deploy-green.txt`,
-`b5-approval-pending.txt`, `b5-prod-survived.txt`), so no claim in ANSWERS.md
-rests on an image alone.
+It is also captured as text (`scenario-b/evidence/b5-approval-pending.txt`,
+`b5-deploy-green.txt`), so no claim rests on the image alone. The other four B5
+images listed here on 2026-09-05 now exist.
+
+Two image files in `scenario-c/evidence/` are not cited by `ANSWERS.md`:
+`exam-token.png` (a full-screen capture of the stopped task-50 task, kept at my
+request) and `CleanShot 2026-09-15 at 20.11.19.png` (a second capture of the C4
+recon output, same minute as `c4-vps-recon.png`).
 
 ## Known limits I chose not to fix
 
@@ -92,6 +110,20 @@ These are deliberate, not oversights.
 
 5. **`depends_on: !reset []`** in `docker/drills/28b-dns.yml` needs Compose
    v2.24+. A plain-`docker run` fallback is in that file's comments.
+
+6. **C4 trusts `X-Tenant` from anyone who reaches port 3140 directly.** nginx on
+   8141 always overwrites it, but the swarm routing mesh publishes 3140 on all
+   interfaces. With no authentication in this app that grants nothing a visitor
+   to the tenant's subdomain does not already have; with authentication, 3140
+   would have to be firewalled to localhost or nginx would add a secret the app
+   checks.
+
+7. **Custom-domain verification checks only that DNS points at the service**
+   (task 61). A production service would require a per-claim TXT token.
+
+8. **The `deploy-ecs` CI job has nothing left to deploy to** after task 63; a push
+   to `main` without `[skip ci]` would fail at its first step. Left as the task 53
+   deliverable.
 
 ## Things that were unverified and now are not
 

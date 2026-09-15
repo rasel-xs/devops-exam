@@ -7,7 +7,17 @@ make the answer work on my machine.
 > Full marks need at least 8 entries that show the gap between the generic
 > answer and the real problem.
 
-**9 entries.** Seven of them are cases where the answer I was given, or the
+**How Scenario C was done — stated first, because it matters for how the rest
+of this file reads.** Up to and including C2 task 50 I did the work step by step
+with AI guidance, typing every command and clicking every console form myself.
+From task 51 onward (2026-09-15) I asked Claude Code to do the work itself: write
+every script and code change, run the AWS CLI from my laptop, commit and push.
+I ran every step that needed a human or my own access — the browser login for
+the CLI, the GitHub production approvals, every command on the shared VPS — and
+took every screenshot. Entries 10–15 are where that AI-driven work was **wrong**
+and had to be corrected by evidence, not guessed at.
+
+**15 entries.** Thirteen of them are cases where the answer I was given, or the
 prediction I wrote from it, was **wrong**, and a measurement corrected it. Those
 are the ones with any value: in each, the generic answer was the *typical* case
 and the interesting behaviour lived in the difference between typical and mine.
@@ -23,6 +33,12 @@ and the interesting behaviour lived in the difference between typical and mine.
 | 7 | I asserted `external_labels` appear on local series. One query proved otherwise |
 | 8 | 396 responses claiming `v1` while five v2 tasks ran — twice, for two different reasons |
 | 9 | Five bugs in one deploy path, four of them found the slow way |
+| 10 | "`docker push` never calls `BatchGetImage`" — the push was refused at the manifest step |
+| 11 | The brief's `hey -c 50` did not trigger autoscaling; the bottleneck was the client's round trip |
+| 12 | A trust policy that could not match: GitHub's immutable OIDC subject, then a missing read action |
+| 13 | A plan built on CloudShell and CloudFront, in an account that could use neither |
+| 14 | An nginx template whose own comment injected config |
+| 15 | A "fixed" check that ran inside the nginx reload window |
 
 ---
 
@@ -335,3 +351,119 @@ and the interesting behaviour lived in the difference between typical and mine.
   failure over a healthy, correctly-updated production; in B4 task 38 Swarm
   reported `update completed` over a service returning 500 to every request.
   Both directions point the same way — ask production, not the tool.
+
+### 10. "docker push never needs `ecr:BatchGetImage`" — it does
+
+- **Stuck on:** C1 task 47, a least-privilege policy for pushing to one ECR repository.
+- **Prompt:**
+  ```
+  can I remove ecr:BatchGetImage from the push policy? it's the pull action and nothing else
+  ```
+- **Answer I got:** yes — push uses the layer-upload actions and `PutImage`;
+  `BatchGetImage` is pull-only, so leaving it in breaks "nothing else".
+- **Did it work:** no. Push run 2 uploaded every layer and was then refused:
+  `not authorized to perform: ecr:BatchGetImage`
+  (`scenario-c/evidence/c1-task47-push-run2-batchgetimage.txt`).
+- **What actually fixed it:** before writing a manifest the client asks whether
+  it already exists, and ECR authorises that lookup as `BatchGetImage`. Put back,
+  and the run-3 script replaced its pull test with two *scope* tests (a granted
+  action against a repository and a service the policy does not name), which
+  prove the claim better. The same class of mistake came back in entry 12.
+
+### 11. The brief's load command did not trigger autoscaling
+
+- **Stuck on:** C2 task 52 — scale out on 50 % CPU with
+  `hey -z 5m -c 50 .../api/search?q=abc`.
+- **Prompt:** (delegated) run the brief's load test and record the scale-out.
+- **Answer I got:** 50 concurrent workers for 5 minutes will push two 0.25-vCPU
+  tasks past 50 %.
+- **Did it work:** no. CPU plateaued at **40 %**; nothing scaled
+  (`scenario-c/evidence/c2-task52-autoscaling-run1-c50.txt`).
+- **What actually fixed it:** reading the result instead of repeating the run.
+  The *fastest* response of 64,113 was 185 ms — that is the Dhaka–Stockholm
+  round trip, so 50 workers can send at most ~213 requests/s however idle the
+  tasks are. The limit was the client, not the service. `-c 120` reached 270
+  req/s and 51 % CPU and scaled 2 → 3 — seven seconds of the second attempt were
+  also lost to re-registering an existing scalable target *with tags*, which is a
+  `ValidationException`. RDS CPU from the same minutes (25 %) showed the app, not
+  the database, was working.
+
+### 12. OIDC to AWS: a trust policy that could never match
+
+- **Stuck on:** C2 task 53 — deploy to ECS from GitHub Actions with no stored keys.
+- **Prompt:** (delegated) create the role with a trust policy limited to this repository's `main` branch.
+- **Answer I got:** the documented condition
+  `token.actions.githubusercontent.com:sub = repo:rasel-xs/devops-exam:ref:refs/heads/main`.
+- **Did it work:** no — twice, for two different reasons
+  (`scenario-c/evidence/c2-task53-attempt1-oidc-denied.txt`, `…attempt2-ecr-denied.txt`).
+  1. `Not authorized to perform sts:AssumeRoleWithWebIdentity`. The repository's
+     OIDC setting (`GET /repos/.../actions/oidc/customization/sub`) had
+     `use_immutable_subject: true`, so the real subject is
+     `repo:rasel-xs@39724326/devops-exam@1355109165:ref:refs/heads/main`.
+  2. With that fixed: `not authorized to perform: ecr:GetDownloadUrlForLayer`.
+     `docker buildx imagetools create` copies an image between registries by
+     *reading* blobs on the destination as well as writing them.
+- **What actually fixed it:** checking the IDs against the GitHub API before
+  changing the policy, then the one missing action scoped to the repository.
+  Both were IAM-only, so each retry was "re-run failed jobs" — no new commit and
+  no second production approval. And before any of that, the run would not even
+  start: a Scenario B approval left pending eleven days earlier was holding the
+  deploy concurrency group and cancelling every later run.
+
+### 13. A plan that assumed services the account could not use
+
+- **Stuck on:** C2 onward, and C3 task 57.
+- **Prompt:**
+  ```
+  aws er cli ache nah?? ami cli diye kaj korte cassilam
+  ```
+  and later, for task 57, a choice between CloudFront and a public bucket policy.
+- **Answer I got:** use AWS CloudShell (no install, no keys); and for 57, keep
+  every public-access block on and publish `public/*` through CloudFront with
+  Origin Access Control.
+- **Did it work:** no, both times, for the same reason. CloudShell: *"Unable to
+  create the environment. Your account verification is in progress."* CloudFront:
+  *"Your account must be verified before you can add new CloudFront resources."*
+  An account-level state only the owner can clear, not an IAM permission.
+- **What actually fixed it:** the AWS CLI on my own laptop with `aws login`
+  (short-lived credentials, no access key — deliberately not on the shared VPS
+  where everyone is root); and for 57 a bucket policy on `public/*` with only the
+  two policy blocks turned off, stated in ANSWERS as a deviation from task 55's
+  wording. The half-created Origin Access Control was deleted at once.
+
+### 14. An nginx template whose own comment injected configuration
+
+- **Stuck on:** C4 — installing a server block on a VPS whose nginx is shared by
+  several students.
+- **Prompt:** (delegated) an installer that renders the template, tests it and reloads nginx.
+- **Answer I got:** bash `${CONF//@@PLACEHOLDER@@/value}` substitution, `nginx -t`,
+  `systemctl reload`, and restore the previous file if the test fails.
+- **Did it work:** the safety net did; the renderer did not. Run 1:
+  `"location" directive is not allowed here in /etc/nginx/sites-enabled/abdur-c4:8`
+  (`scenario-c/evidence/c4-install-run1-nginx-test-failed.txt`). The template's
+  header comment *named* the placeholders, the substitution replaced them there
+  too, and the three-line `/metrics` rule landed outside any server block.
+- **What actually fixed it:** the names removed from the comment, and the
+  renderer now counts placeholders before substituting and refuses to write a
+  config still containing `@@`. Because the test ran before the reload, no other
+  student's site was affected. Downloads were also pinned to a commit, because
+  raw.githubusercontent.com served the previous file for a few minutes.
+
+### 15. A "fixed" check that passed judgement on the old config
+
+- **Stuck on:** C4 task 62.3 / 62.4 — demonstrate the vulnerable config, then the fix.
+- **Prompt:** (delegated) flip nginx to the buggy config, show the bug, flip back, show it fixed.
+- **Answer I got:** `systemctl reload nginx` applies a new config gracefully; test straight after.
+- **Did it work:** no. The "fixed" half of 62.3 returned **globex's** notes under a
+  label saying acme, and 62.4's returned the whole metrics page
+  (`scenario-c/evidence/c4-demo-run1.txt`) — while three requests each from the
+  laptop minutes later were correct.
+- **What actually fixed it:** understanding the reload: `systemctl reload` only
+  sends the signal and returns, and until the master has started new workers and
+  told the old ones to stop accepting, an old worker still running the previous
+  config can take the next connection. The installer now waits for old workers to
+  finish shutting down and settles; the demo sends three separate requests, because
+  one answer is not proof. Re-run: 3/3 acme, 3/3 404
+  (`scenario-c/evidence/c4-demo-run2-623-624.txt`). The label on the failed run
+  also taught the obvious lesson: a script that prints what the result *should*
+  be next to the result makes a wrong result easy to miss.
