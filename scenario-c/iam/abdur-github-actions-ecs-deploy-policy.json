@@ -30,6 +30,17 @@
       "Resource": "*"
     },
     {
+      "Sid": "TagOnlyAbdurNotesApiTaskDefinitionsAndOnlyWhileRegisteringThem",
+      "Effect": "Allow",
+      "Action": "ecs:TagResource",
+      "Resource": "arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:*",
+      "Condition": {
+        "StringEquals": {
+          "ecs:CreateAction": "RegisterTaskDefinition"
+        }
+      }
+    },
+    {
       "Sid": "UpdateAndWatchTheAbdurNotesSvcServiceOnly",
       "Effect": "Allow",
       "Action": [
@@ -44,7 +55,9 @@
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::750069566598:role/abdur-ecs-task-execution-role",
       "Condition": {
-        "StringEquals": { "iam:PassedToService": "ecs-tasks.amazonaws.com" }
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
       }
     }
   ]
