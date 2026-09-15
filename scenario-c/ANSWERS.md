@@ -2091,7 +2091,9 @@ $1.6–2.0 in total**.
   It is left in place as the task 53 deliverable; every commit after the cleanup
   uses `[skip ci]`.
 - The Scenario B/C4 deployment on the VPS does not use AWS at all.
-- Locally: the AWS CLI installed for C2–C5 and `hey` are removed from the laptop
-  after the final evidence (see the note below).
+- Locally: the AWS CLI installed for C2–C5 (233 MB in `~/aws-cli`), its
+  `aws login` session cache in `~/.aws`, and `hey` were removed from the laptop on
+  2026-09-15 after the last evidence was committed; `command -v aws` and
+  `command -v hey` now find nothing.
 
 <!-- status: DONE -->
