@@ -1142,7 +1142,7 @@ seconds. The same run's VPS `deploy` job was then approved by hand and succeeded
 (3 m 22 s) — the two deploy jobs are independent, and ECS does not wait behind a
 human.
 
-<!-- status: DONE except the three screenshots -->
+<!-- status: DONE -->
 
 ### Task 54 (2 marks) — Something is broken, debug it
 
