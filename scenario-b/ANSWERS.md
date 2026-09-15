@@ -2272,7 +2272,7 @@ run 33903125661 approvals:
 ```
 
 - Paused with "Review pending deployments": `evidence/b5-approval-pending.png`
-- After approval: `evidence/b5-approval-approved.png`
+- After approval: `evidence/b5-approval-approved.png` (the green run) and `evidence/b5-approval-approved.txt` (GitHub's approval record: approved by `rasel-xs` for `production`)
 - Machine-readable capture of the paused state: `evidence/b5-approval-pending.txt`
 - New tag live on the VPS: `evidence/b5-vps-new-version.png`
 

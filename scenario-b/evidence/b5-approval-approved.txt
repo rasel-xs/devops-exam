@@ -1,0 +1,9 @@
+# GitHub's own record of the production approval for Deploy run #12 (id 33903125661),
+# read with the GitHub API on 2026-09-15. The run page in b5-approval-approved.png shows
+# the green run; it does not display who approved, so the record is kept beside it.
+
+$ gh api repos/rasel-xs/devops-exam/actions/runs/33903125661 --jq '...'
+run #12 id 33903125661 completed/success commit b4e7dfc "B5 task 44: five bugs in one deploy path, each hidden behind the last" created 2026-09-04T17:55:21Z
+
+$ gh api repos/rasel-xs/devops-exam/actions/runs/33903125661/approvals
+state=approved user=rasel-xs environments=production

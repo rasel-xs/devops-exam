@@ -66,18 +66,15 @@ prompts themselves.
 
 ## Screenshots still to capture
 
-| File | Source |
-| --- | --- |
-| `scenario-b/evidence/b5-approval-approved.png` | Actions run 33903125661 — the production approval |
+**None.** The last one, `scenario-b/evidence/b5-approval-approved.png` (Deploy
+run #12, id 33903125661), was added on 2026-09-15. The run page shows the green
+run but not who approved it, so GitHub's approval record — approved by
+`rasel-xs` for `production` — is kept beside it as
+`scenario-b/evidence/b5-approval-approved.txt`.
 
-It is also captured as text (`scenario-b/evidence/b5-approval-pending.txt`,
-`b5-deploy-green.txt`), so no claim rests on the image alone. The other four B5
-images listed here on 2026-09-05 now exist.
-
-Two image files in `scenario-c/evidence/` are not cited by `ANSWERS.md`:
-`exam-token.png` (a full-screen capture of the stopped task-50 task, kept at my
-request) and `CleanShot 2026-09-15 at 20.11.19.png` (a second capture of the C4
-recon output, same minute as `c4-vps-recon.png`).
+One image in `scenario-c/evidence/` is not cited by `ANSWERS.md`:
+`exam-token.png`, a full-screen capture of the stopped task-50 task, kept at my
+request.
 
 ## Known limits I chose not to fix
 
