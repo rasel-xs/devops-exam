@@ -994,7 +994,155 @@ Deliverables: a successful pipeline run deploying to ECS, the ECS service
 showing the new task definition revision, and the trust policy showing the repo
 condition.
 
-<!-- status: not started -->
+**Result: Deploy run #34 deployed commit `1daabd6` (image `v1.0.91`) to
+`abdur-notes-svc` as task definition revision `abdur-notes-api:2`, with no AWS
+credential stored anywhere — on the third attempt, after two real permission
+failures, both diagnosed from the logs and fixed on the AWS side.**
+
+Evidence: `evidence/c2-task53-deploy-ecs.txt` (the successful job's log lines
+plus the AWS-side check afterwards), `evidence/c2-task53-attempt1-oidc-denied.txt`,
+`evidence/c2-task53-attempt2-ecr-denied.txt`; screenshots
+`evidence/c2-task53-pipeline-run.png`, `evidence/c2-task53-ecs-new-revision.png`,
+`evidence/c2-task53-trust-policy.png`. Workflow: the `deploy-ecs` job in
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
+
+#### No keys: OIDC, and a trust policy that names one repository and one branch
+
+GitHub mints a short-lived OIDC token for the job (`permissions: id-token: write`);
+`aws-actions/configure-aws-credentials` exchanges it with STS for temporary
+credentials of `abdur-github-actions-ecs-deploy`. There is no
+`AWS_ACCESS_KEY_ID` secret in the repository and none was ever created.
+The account's GitHub OIDC provider already existed (another student created it
+on 2026-09-14; an account can only have one per URL) — it was used, not modified.
+
+[`iam/abdur-github-actions-ecs-deploy-trust.json`](iam/abdur-github-actions-ecs-deploy-trust.json):
+
+```json
+{
+  "Sid": "OnlyGitHubActionsFromRaselXsDevopsExamMainBranchPinnedByOwnerAndRepoId",
+  "Effect": "Allow",
+  "Principal": { "Federated": "arn:aws:iam::750069566598:oidc-provider/token.actions.githubusercontent.com" },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": {
+      "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+      "token.actions.githubusercontent.com:sub": "repo:rasel-xs@39724326/devops-exam@1355109165:ref:refs/heads/main"
+    }
+  }
+}
+```
+
+- `aud` stops a token minted for some other cloud or service being replayed here.
+- `sub` is the repository **and** the branch. A pull request (`…:pull_request`),
+  another branch, a fork, or any other repository presents a different subject
+  and is refused. `StringEquals`, not `StringLike` with `*` — a wildcard such as
+  `repo:rasel-xs/*` would hand the role to every repository I own.
+- The `deploy-ecs` job deliberately has **no `environment:`** — an environment
+  changes the subject to `…:environment:<name>`, which this policy would reject.
+- The numbers are GitHub's owner and repository IDs (see attempt 1 below), which
+  also means a deleted-and-recreated `devops-exam` could not assume the role.
+
+#### Permissions: [`iam/abdur-github-actions-ecs-deploy-policy.json`](iam/abdur-github-actions-ecs-deploy-policy.json)
+
+| Statement (`Sid` is the comment) | Actions | Resource |
+| --- | --- | --- |
+| `EcrLoginTokenIsRegistryWideAndCannotBeScopedSoResourceIsStar` | `ecr:GetAuthorizationToken` | `*` — as task 47 |
+| `PushToTheAbdurNotesApiRepositoryOnly` | layer upload actions, `PutImage`, `BatchGetImage`, `GetDownloadUrlForLayer` | `repository/abdur-notes-api` |
+| `TaskDefinitionRegisterAndDescribeHaveNoResourceLevelPermissionsSoResourceIsStar` | `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` | `*` — these two actions do not support resource-level permissions |
+| `TagOnlyAbdurNotesApiTaskDefinitionsAndOnlyWhileRegisteringThem` | `ecs:TagResource` | `task-definition/abdur-notes-api:*`, condition `ecs:CreateAction = RegisterTaskDefinition` (the task definition carries the `exam-token` tag) |
+| `UpdateAndWatchTheAbdurNotesSvcServiceOnly` | `ecs:UpdateService`, `ecs:DescribeServices` | `service/abdur-exam-cluster/abdur-notes-svc` |
+| `PassOnlyTheTaskExecutionRoleAndOnlyToEcsTasks` | `iam:PassRole` | `role/abdur-ecs-task-execution-role`, condition `iam:PassedToService = ecs-tasks.amazonaws.com` |
+
+`iam:PassRole` is the one that matters most: registering a task definition names
+an execution role, and without the resource and condition the pipeline could
+attach *any* role in the account — including an administrator — to a container
+it controls.
+
+#### What the job does
+
+1. assume the role via OIDC, print `sts get-caller-identity`;
+2. log in to ECR and GHCR;
+3. **copy** the image the build job pushed to GHCR into ECR with
+   `docker buildx imagetools create`, by digest — **not rebuild it** — and fail
+   unless the digests match. Run #34: GHCR and ECR both
+   `sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c`;
+4. register a new revision from the task definition **in git**
+   ([`ecs/abdur-notes-api-taskdef.json`](ecs/abdur-notes-api-taskdef.json)), CI
+   filling in only the account ID and the image, pinned as `tag@digest`;
+5. `update-service`, `wait services-stable`, and then check that the **PRIMARY**
+   deployment is the new revision with `rolloutState COMPLETED`. "Stable" alone
+   is not success: a deployment-circuit-breaker rollback (task 51) also ends
+   stable — on the old revision;
+6. through the ALB, require four consecutive `/healthz` answers carrying the new
+   version, then `/readyz` (which queries RDS).
+
+Run #34, attempt 3, `deploy-ecs`:
+
+```
+"Arn": "arn:aws:sts::750069566598:assumed-role/abdur-github-actions-ecs-deploy/gha-34970646404-3"
+GHCR digest: sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c
+ECR  digest: sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c
+registered arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2
+primary deployment: arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2  COMPLETED
+healthz: {"status":"ok","version":"v1.0.91","host":"ip-172-31-28-104.eu-north-1.compute.internal"}
+healthz: {"status":"ok","version":"v1.0.91","host":"ip-172-31-43-58.eu-north-1.compute.internal"}
+{"status":"ready","version":"v1.0.91"}
+```
+
+Checked independently from the laptop afterwards: the service's only deployment
+is `abdur-notes-api:2`, `PRIMARY`, `COMPLETED`, 2/2 running; revision 2 was
+`registeredBy` the assumed GitHub role session; a revision-2 task logged
+`migrations applied` and `listening … v1.0.91`.
+
+ECR now shows one tagged image index (`v1.0.91`) and four **untagged** manifests
+pushed in the same second. They are not leftovers: an index is a list of
+per-platform manifests (amd64, arm64) plus buildx's provenance attestations, and
+copying the index copies its children, which carry no tags of their own.
+
+#### The same revision fixes task 50's TLS compromise
+
+Task 50 used `sslmode=no-verify` because the image had no RDS CA. Revision 2's
+URL is
+
+```
+…/notes?sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem
+```
+
+The Amazon RDS global bundle is committed to the repository
+(`scenario-b/app/certs/`, sha256 `e5bb2084…`, fetched once over HTTPS) and copied
+into the image. With node-postgres 8.23 / pg-connection-string 2.14,
+`verify-full` plus `sslrootcert` sets the CA and keeps both chain and hostname
+verification on. A wrong CA or a mismatched hostname would have failed the
+migration's connection, the tasks would never have become healthy, and the
+circuit breaker would have rolled back to revision 1 — which the job's PRIMARY
+check turns into a red run. It stayed green, and `/readyz` answered through
+a verified connection.
+
+#### Three attempts — what failed, and why it was not a guess
+
+| Attempt | Failed at | Error | Cause | Fix |
+| --- | --- | --- | --- | --- |
+| 1 | assume role | `Not authorized to perform sts:AssumeRoleWithWebIdentity` (retried for 2 min) | This repository issues OIDC tokens with the **immutable subject** format (`GET /repos/…/actions/oidc/customization/sub` → `use_immutable_subject: true`, prefix `repo:rasel-xs@39724326/devops-exam@1355109165`). The trust policy expected the name-only `repo:rasel-xs/devops-exam:ref:refs/heads/main`. The IDs were checked against `GET /users/rasel-xs` and `GET /repos/rasel-xs/devops-exam` before changing anything | `sub` rewritten to the ID form |
+| 2 | copy image | `not authorized to perform: ecr:GetDownloadUrlForLayer on … repository/abdur-notes-api` | The role could assume and log in, so the trust fix was proven. A cross-registry `imagetools create` does not only write: it checks and reads blobs on the destination. Same lesson as task 47, where `docker push` needed `BatchGetImage` | action added, repository-scoped |
+| 3 | — | green | | |
+
+Both fixes were IAM-only, so each retry was **Re-run failed jobs** on the same
+run and commit — no new push, and no second production approval for the VPS
+job.
+
+#### Before any of that: the run would not start
+
+Run #34 sat on *Pending* with no jobs. Cause: the Scenario B Deploy run
+`33905733598` (2026-09-04) had been left at its production-approval gate for
+eleven days, holding concurrency group `deploy-main`; every later Deploy run had
+been superseded and cancelled without starting — the limitation recorded in
+Scenario B task 46, now with a real consequence. It was **rejected** (approving
+would have deployed an 11-day-old build to the VPS), and run #34 started within
+seconds. The same run's VPS `deploy` job was then approved by hand and succeeded
+(3 m 22 s) — the two deploy jobs are independent, and ECS does not wait behind a
+human.
+
+<!-- status: DONE except the three screenshots -->
 
 ### Task 54 (2 marks) — Something is broken, debug it
 

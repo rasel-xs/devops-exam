@@ -1,0 +1,123 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:12:55 +06 2026
+=== GitHub Actions: Deploy run #34 (34970646404), attempt 3, job deploy-ecs (104393987221)
+run: completed/success  attempt 3  commit 1daabd6  event push  branch main
+  1 Set up job: success
+  2 Run actions/checkout@v4: success
+  3 Assume the deploy role via OIDC (no stored credentials): success
+  4 Show who we are now: success
+  5 Log in to ECR: success
+  6 Log in to GHCR (read the image just built): success
+  7 Run docker/setup-buildx-action@v3: success
+  8 Copy the image from GHCR to ECR: success
+  9 Register a new task definition revision: success
+  10 Update the service and wait for it to settle: success
+  11 Verify through the load balancer: success
+  18 Post Run docker/setup-buildx-action@v3: success
+  19 Post Log in to GHCR (read the image just built): success
+  20 Post Log in to ECR: success
+  21 Post Assume the deploy role via OIDC (no stored credentials): success
+  22 Post Run actions/checkout@v4: success
+  23 Complete job: success
+--- key log lines
+    "Arn": "arn:aws:sts::750069566598:assumed-role/abdur-github-actions-ecs-deploy/gha-34970646404-3"
+GHCR digest: sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c
+ECR  digest: sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c
+registered arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2
+primary deployment: arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2	COMPLETED
+service is running arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2
+healthz: {"status":"ok","version":"v1.0.91","host":"ip-172-31-28-104.eu-north-1.compute.internal"}
+healthz: {"status":"ok","version":"v1.0.91","host":"ip-172-31-43-58.eu-north-1.compute.internal"}
+healthz: {"status":"ok","version":"v1.0.91","host":"ip-172-31-43-58.eu-north-1.compute.internal"}
+healthz: {"status":"ok","version":"v1.0.91","host":"ip-172-31-28-104.eu-north-1.compute.internal"}
+{"status":"ready","version":"v1.0.91"}
+
+=== AWS side, checked from the laptop afterwards
+{
+    "taskDefinition": "arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2",
+    "desired": 2,
+    "running": 2,
+    "deployments": [
+        {
+            "status": "PRIMARY",
+            "taskDefinition": "arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2",
+            "rollout": "COMPLETED"
+        }
+    ]
+}
+--- revision 2: image and database URL
+{
+    "revision": 2,
+    "registeredBy": "arn:aws:sts::750069566598:assumed-role/abdur-github-actions-ecs-deploy/gha-34970646404-3",
+    "image": "750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.91@sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c",
+    "DATABASE_URL": "postgres://notes@abdur-notes-db.c9c4ku2mkinq.eu-north-1.rds.amazonaws.com:5432/notes?sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem"
+}
+--- ECR now holds
+---------------------------------------------------------------------------------------
+|                                   DescribeImages                                    |
++--------+----------------------------------------------------------------------------+
+|  digest|  sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf   |
+|  pushed|  2026-09-14T02:05:54.770000+06:00                                          |
+|  tags  |  ['v1.0.69']                                                               |
+|  type  |  application/vnd.oci.image.manifest.v1+json                                |
++--------+----------------------------------------------------------------------------+
+||                                       tags                                        ||
+|+-----------------------------------------------------------------------------------+|
+||  v1.0.69                                                                          ||
+|+-----------------------------------------------------------------------------------+|
+|                                   DescribeImages                                    |
++--------+----------------------------------------------------------------------------+
+|  digest|  sha256:89eb743e726ae3601631f527f3e51e7333ea72501b2541fd54f2c068cb5de4cd   |
+|  pushed|  2026-09-15T19:06:53.572000+06:00                                          |
+|  tags  |  None                                                                      |
+|  type  |  application/vnd.oci.image.manifest.v1+json                                |
++--------+----------------------------------------------------------------------------+
+|                                   DescribeImages                                    |
++--------+----------------------------------------------------------------------------+
+|  digest|  sha256:259fbf8544a0f7cc911181c39f2c637759a6ae1dc996db69141f5e898aebcc6d   |
+|  pushed|  2026-09-15T19:06:53.699000+06:00                                          |
+|  tags  |  None                                                                      |
+|  type  |  application/vnd.oci.image.manifest.v1+json                                |
++--------+----------------------------------------------------------------------------+
+|                                   DescribeImages                                    |
++--------+----------------------------------------------------------------------------+
+|  digest|  sha256:9ec45ab1e207406eb2d433ec6af24667a6f06ff108976ad299e7cca0be942195   |
+|  pushed|  2026-09-15T19:06:57.576000+06:00                                          |
+|  tags  |  None                                                                      |
+|  type  |  application/vnd.oci.image.manifest.v1+json                                |
++--------+----------------------------------------------------------------------------+
+|                                   DescribeImages                                    |
++--------+----------------------------------------------------------------------------+
+|  digest|  sha256:1dbe67b6a781573c8ed45f1bb2c024b19ba370e77a7b9c7e91d0dcb3eedc1d68   |
+|  pushed|  2026-09-15T19:07:01.036000+06:00                                          |
+|  tags  |  None                                                                      |
+|  type  |  application/vnd.oci.image.manifest.v1+json                                |
++--------+----------------------------------------------------------------------------+
+|                                   DescribeImages                                    |
++--------+----------------------------------------------------------------------------+
+|  digest|  sha256:6ecd303e0e63c342b7242f61c374602a43673e6a1ba9953ac1e51e447276100c   |
+|  pushed|  2026-09-15T19:07:01.835000+06:00                                          |
+|  tags  |  ['v1.0.91']                                                               |
+|  type  |  application/vnd.oci.image.index.v1+json                                   |
++--------+----------------------------------------------------------------------------+
+||                                       tags                                        ||
+|+-----------------------------------------------------------------------------------+|
+||  v1.0.91                                                                          ||
+|+-----------------------------------------------------------------------------------+|
+--- first log lines of a revision-2 task (TLS verify-full against RDS)
+{
+    "task": "arn:aws:ecs:eu-north-1:750069566598:task/abdur-exam-cluster/466301e6dcf14000941dab5433c92d4e",
+    "taskDefinition": "arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:2",
+    "health": "HEALTHY"
+}
+migrations applied
+{"level":"info","msg":"listening","host":"ip-172-31-43-58.eu-north-1.compute.internal","port":3000,"version":"v1.0.91","pid":1}
+--- the role's trust condition and who used it
+{
+    "condition": {
+        "StringEquals": {
+            "token.actions.githubusercontent.com:sub": "repo:rasel-xs@39724326/devops-exam@1355109165:ref:refs/heads/main",
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        }
+    },
+    "lastUsed": {}
+}
