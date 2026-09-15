@@ -1235,7 +1235,74 @@ an upload through it with `curl -X PUT --upload-file`.
 Deliverables: the generated URL, the successful upload, the object in the S3
 console.
 
-<!-- status: not started -->
+All four tasks were proved in one run of
+[`c3-attachments-demo.sh`](c3-attachments-demo.sh) against the live service
+(`v1.0.96`, task definition `abdur-notes-api:3`), transcript
+`evidence/c3-attachments-demo.txt`. The script needs only `curl`: **the client
+holds no AWS credentials** — the app signs, the client uses the URL, exactly as a
+browser would.
+
+Screenshots: `evidence/c3-task55-upload.png` (URL and `HTTP 200`),
+`evidence/c3-task55-s3-console.png` (the object).
+
+#### The bucket — `abdur-notes-750069566598` (`evidence/c3-task55-bucket.txt`)
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Region | eu-north-1 | same as everything else; bucket names are global, so the account ID is in the name |
+| Object ownership | `BucketOwnerEnforced` | ACLs disabled entirely — access is decided by policies only |
+| Default encryption | SSE-S3 (AES256), bucket key on | at rest, at no cost |
+| Block Public Access | **all four on at creation**; two of them later turned off for task 57 — see there | |
+| Tag | `exam-token` | |
+
+#### Who can write: the task role, not the client
+
+The containers run with a new **task role**, `abdur-ecs-task-role`
+([`iam/abdur-ecs-task-role-policy.json`](iam/abdur-ecs-task-role-policy.json)):
+`s3:PutObject` and `s3:GetObject` on `tenants/*` and `public/*` of this bucket
+and nothing else — no `ListBucket`, no `DeleteObject`, no other bucket. Its trust
+policy accepts only `ecs-tasks.amazonaws.com` from this account
+(`aws:SourceAccount`, `aws:SourceArn`). This is a different role from task 50's
+*execution* role: the execution role is used by ECS to pull the image and read
+the database secret; the task role is what the application code itself gets.
+The CI role's `iam:PassRole` was extended to exactly this one extra role.
+
+A presigned URL is a request signed in advance **with the task role's temporary
+credentials** — the `X-Amz-Credential` in the URL begins `ASIA…` (an STS session
+key), and `X-Amz-Security-Token` carries the session. The URL grants what that
+role may do, for that one key and method, until it expires.
+
+#### The endpoint — [`scenario-b/app/src/attachments.js`](../scenario-b/app/src/attachments.js)
+
+`POST /api/attachments/upload-url` with `{"filename": "...", "visibility": "private"|"public"}`
+returns a presigned **PUT** valid for **300 s**. The key is chosen by the
+server, never by the client: `tenants/<tenant>/private/<uuid>-<name>`, the
+filename reduced to a safe basename (`"../../etc/passwd report.pdf"` becomes
+`passwd_report.pdf` — checked in an offline test before deploying).
+
+From the transcript:
+
+```
+$ curl -X POST $ALB/api/attachments/upload-url -H 'X-Tenant: acme' -d '{"filename":"acme-invoice-001.txt"}'
+{"key":"tenants/acme/private/f1dd8c56-…-acme-invoice-001.txt","visibility":"private","method":"PUT",
+ "url":"https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/tenants/acme/private/f1dd8c56-…-acme-invoice-001.txt
+        ?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD
+        &X-Amz-Credential=ASIA…%2F20260915%2Feu-north-1%2Fs3%2Faws4_request
+        &X-Amz-Date=20260915T133601Z&X-Amz-Expires=300&X-Amz-Security-Token=…
+        &X-Amz-Signature=1b9fec62…&X-Amz-SignedHeaders=host&x-id=PutObject","expiresInSeconds":300}
+
+$ curl -X PUT --upload-file acme-invoice-001.txt '<the URL above>'
+HTTP 200
+```
+
+**A trap avoided.** AWS SDK for JavaScript v3 now adds a CRC32 checksum of the
+body to `PutObject` by default. For a *presigned* PUT there is no body when the
+URL is made, so the URL would carry a checksum that no real file matches and
+`curl --upload-file` would be refused. The S3 client is built with
+`requestChecksumCalculation: 'WHEN_REQUIRED'`; the offline test confirmed the
+generated URL has no checksum parameters, and the upload returned 200.
+
+<!-- status: DONE except the two screenshots -->
 
 ### Task 56 (4 marks) — Presigned download and expiry
 
@@ -1248,7 +1315,80 @@ request to the object → AccessDenied.
 Telegram group, what can strangers do and for how long? Give **two different**
 ways to reduce the risk, and say which one you would actually implement and why.
 
-<!-- status: not started -->
+Screenshot: `evidence/c3-task56-expired-xml.png`.
+
+`GET /api/attachments/:key/download-url` — the key URL-encoded into one path
+segment (`tenants%2Facme%2Fprivate%2F…`) — returns a presigned **GET** with
+`X-Amz-Expires=60` and an `expiresAt`:
+
+```
+{"key":"tenants/acme/private/f1dd8c56-…-acme-invoice-001.txt","method":"GET",
+ "url":"https://…/tenants/acme/private/f1dd8c56-…?…&X-Amz-Date=20260915T133603Z&X-Amz-Expires=60&…",
+ "expiresInSeconds":60,"expiresAt":"2026-09-15T13:37:03.846Z"}
+
+--- open it now (works)
+acme invoice 001 -- private to acme -- Tue Sep 15 19:36:01 +06 2026
+[HTTP 200]
+
+waiting 61 seconds...
+
+--- open the SAME URL again after 61 s -- S3's exact error
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Request has expired</Message><X-Amz-Expires>60</X-Amz-Expires><Expires>2026-09-15T13:37:03Z</Expires><ServerTime>2026-09-15T13:37:08Z</ServerTime><RequestId>YEHRM4KPC60J4SYE</RequestId><HostId>YcP79Hs4…</HostId></Error>
+[HTTP 403]
+
+--- a plain, unsigned request for the same object
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message><RequestId>M0DAY635TZA24HEE</RequestId><HostId>JIkO9UGI…</HostId></Error>
+[HTTP 403]
+```
+
+The two denials are different on purpose: *Request has expired* means the
+signature was valid and only the clock refused it (S3 even reports the expiry and
+its own time — 13:37:03 vs 13:37:08); *Access Denied* with no signature means
+nobody was identified at all, and the bucket grants anonymous users nothing
+under `tenants/`.
+
+#### Question: a presigned URL posted in a public Telegram group
+
+**What strangers can do:** anyone who clicks it can **download that one object**
+— only that key, only `GET` — from anywhere, with no login, **until it
+expires: at most 60 seconds after it was signed** (and sooner if the task role's
+temporary credentials that signed it expire first; a URL never outlives its
+signing session). They cannot list the bucket, upload, delete, change the key,
+or mint new URLs — the URL contains no secret key, only a signature over this
+one request. But expiry limits *access*, not *copies*: whoever downloaded it in
+those 60 seconds keeps the file and can re-post it forever. A presigned URL is a
+**bearer token** — possession is permission.
+
+**Two different ways to reduce the risk:**
+
+1. **Make the token nearly worthless when leaked — very short TTL, signed per
+   click.** The URL is created only when the user clicks "download", for 60 s or
+   less, and never stored or emailed. A leak is then a race measured in seconds.
+   Cheap, no extra infrastructure; already implemented. Weakness: during the
+   window, anyone gets the file.
+2. **Do not hand out S3 URLs for private files at all — download through the
+   application.** `GET /api/attachments/:key` checks the logged-in user and tenant
+   on **every** request and streams the object from S3 (or returns a URL only to
+   an authenticated session, never in a shareable form). A leaked link then
+   needs the victim's session too, every access is logged per user, and access
+   can be revoked instantly. Weakness: file bytes flow through the app — more
+   bandwidth and CPU on the tasks, and no direct-from-S3 speed.
+
+(A third, blunter lever exists for emergencies: removing `s3:GetObject` from the
+task role, or revoking its sessions, invalidates **every** outstanding URL at
+once — useful after a leak, not as a design.)
+
+**Which I would implement:** option 2 for `tenants/*/private/*`, keeping
+presigned URLs for **uploads** and for `public/*`. For private tenant documents
+the question that matters is "is *this* person allowed *now*?", and only an
+authenticated request can answer it each time; a short TTL just shortens the
+window in which the answer is "anyone". The bandwidth cost is acceptable for the
+small documents this app stores. The 60 s TTL stays as defence in depth for any
+URL that is issued.
+
+<!-- status: DONE except the screenshot -->
 
 ### Task 57 (6 marks) — Two access patterns in one bucket
 
@@ -1259,7 +1399,75 @@ Prove all three, one screenshot each: plain URL to `public/` works; plain URL to
 `tenants/acme/private/` is AccessDenied; presigned URL to that same private file
 works.
 
-<!-- status: not started -->
+Screenshots: `evidence/c3-task57a-public-plain-200.png`,
+`evidence/c3-task57b-private-plain-denied.png`,
+`evidence/c3-task57c-private-presigned-200.png`.
+
+```
+--- 57a. plain URL to public/ -- no signature, anyone
+$ curl https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/public/acme/b2142f66-…-acme-logo.txt
+acme public logo placeholder -- Tue Sep 15 19:36:01 +06 2026
+[HTTP 200]
+
+--- 57b. plain URL to tenants/acme/private/ -- no signature
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message>…</Error>
+[HTTP 403]
+
+--- 57c. presigned URL to that same private file
+acme invoice 001 -- private to acme -- Tue Sep 15 19:36:01 +06 2026
+[HTTP 200]
+```
+
+#### How the two patterns coexist — and a conflict with task 55
+
+The brief asks for all public access blocked (task 55) **and** a prefix anyone can
+read with a plain URL (task 57). With Block Public Access fully on, S3 refuses
+*any* public bucket policy, so both cannot be literally true of one bucket
+accessed directly.
+
+**First choice: keep every block on and publish `public/*` through CloudFront**
+with Origin Access Control — the bucket would grant read only to one
+CloudFront distribution, and "a plain URL" would be the CloudFront URL. The OAC
+was created, but the distribution was refused
+(`evidence/c3-task57-cloudfront-create.txt`):
+
+```
+An error occurred (AccessDenied) when calling the CreateDistributionWithTags operation:
+Your account must be verified before you can add new CloudFront resources.
+```
+
+— the same account-level "verification in progress" state that blocked
+CloudShell (*Constraints* §4), not an IAM permission. The unused OAC was deleted
+immediately and no CloudFront resource of mine exists.
+
+**What was built instead** (`evidence/c3-task57-bucket-policy.txt`): on this
+bucket only, the two **policy** blocks were turned off and the two **ACL**
+blocks left on:
+
+```
+BlockPublicAcls: true       IgnorePublicAcls: true        <- still on: no object can be made public by ACL
+BlockPublicPolicy: false    RestrictPublicBuckets: false  <- off: allows the one statement below
+```
+
+[`s3/abdur-notes-bucket-policy.json`](s3/abdur-notes-bucket-policy.json):
+
+| Sid | Effect | What |
+| --- | --- | --- |
+| `AnyoneMayReadObjectsUnderPublicPrefixOnlyNothingElse` | Allow `*` | `s3:GetObject` on `arn:aws:s3:::abdur-notes-750069566598/public/*` — no `ListBucket`, no other prefix |
+| `RefuseAnyRequestThatIsNotTls` | Deny `*` | every `s3:*` when `aws:SecureTransport` is `false` |
+
+S3's own verdict afterwards was `get-bucket-policy-status` → `"IsPublic": true`
+— stated rather than hidden: the bucket **is** public, for `public/*`, and the
+proofs above show that `tenants/*` is not. `tenants/…/private/*` needs no
+statement at all: nothing grants anonymous access there, so the default implicit
+deny applies (57b), while a presigned URL carries the task role's identity, which
+is allowed (57c).
+
+Uploads to `public/` still go through a presigned PUT from the app; the policy
+opens reading only. With a verified account I would move `public/*` behind
+CloudFront and turn all four blocks back on.
+
+<!-- status: DONE except the three screenshots -->
 
 ### Task 58 (5 marks) — Tenant isolation
 
@@ -1267,7 +1475,42 @@ works.
 **in application code, before anything is signed**. Prove it: as `acme`, request
 a presigned URL for a `globex` key, and screenshot the 403.
 
-<!-- status: not started -->
+Screenshot: `evidence/c3-task58-cross-tenant-403.png`.
+
+```
+globex's key (acme knows it): tenants/globex/private/22388173-980c-42b5-8557-c799fc8146f0-globex-payroll.txt
+
+$ curl $ALB/api/attachments/<globex key>/download-url -H 'X-Tenant: acme'
+{"error":"forbidden: this key does not belong to your tenant"}
+[HTTP 403]
+
+control -- the owner asks for the same key:
+  globex -> [HTTP 200] (a URL was signed)
+```
+
+The object exists (globex uploaded it in the same run), and the control request
+proves the key is valid — the 403 is about *who is asking*, not a missing file.
+
+#### Why the check has to be in application code
+
+Every tenant's request is served by the same containers with the same task role,
+and that role may read `tenants/*`. **IAM cannot tell acme from globex** — to AWS
+both are `abdur-ecs-task-role`. So the only place that knows which tenant is
+asking is the app, and it must decide **before** calling the signer: once a URL
+exists, S3 will honour it for anyone holding it. `keyBelongsToTenant()` in
+[`attachments.js`](../scenario-b/app/src/attachments.js) allows a key only if it
+starts with `tenants/<caller>/` or `public/<caller>/`, and rejects `..`, `//`,
+a leading `/` and oversized keys — so `tenants/acme/../globex/private/x.pdf` is
+also refused (403 in the offline test). A refusal is logged as a `warn` line with
+the tenant and the key, and no URL is returned.
+
+**The honest limit:** the tenant is taken from the `X-Tenant` header, which any
+client can set — `-H 'X-Tenant: globex'` would pass this check. Isolation is only
+as strong as tenant identification. That is exactly C4 task 62.3, where the
+tenant must come from the `Host` header set by the proxy and a client-supplied
+`X-Tenant` must be overwritten.
+
+<!-- status: DONE except the screenshot -->
 
 ---
 

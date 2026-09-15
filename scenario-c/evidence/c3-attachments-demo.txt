@@ -1,0 +1,75 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:36:00 +06 2026
+service: {"status":"ok","version":"v1.0.96","host":"ip-172-31-7-224.eu-north-1.compute.internal"}
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:36:01 +06 2026
+=== TASK 55 -- presigned upload into a private bucket ===
+$ curl -X POST http://abdur-notes-alb-2056595441.eu-north-1.elb.amazonaws.com/api/attachments/upload-url -H 'X-Tenant: acme' -d '{"filename":"acme-invoice-001.txt"}'
+{"key":"tenants/acme/private/f1dd8c56-c9fd-4691-b7c7-e2cfb69b5cb2-acme-invoice-001.txt","visibility":"private","method":"PUT","url":"https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/tenants/acme/private/f1dd8c56-c9fd-4691-b7c7-e2cfb69b5cb2-acme-invoice-001.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=ASIA25I5BJSDKWR6XSPT%2F20260915%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20260915T133601Z&X-Amz-Expires=300&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEDUaCmV1LW5vcnRoLTEiSDBGAiEAn4qnMWtS%2BfYxGQ1NZEjzOHYMAK0YOGDKJ8xDcwQQSngCIQDgWVnODGxEDBLjQ6jOCzQVxgacNx%2BnDVwK0Rsqywv0JCqFBAj%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDc1MDA2OTU2NjU5OCIMd7bQqdPcAskRbzhYKtkDFX3E5TILpAFruBRX9FpF9FgXRxj%2F055e0Ts4W%2B0tnul8pXMTd6Wrv9QWmWFsdGTOayrufmWS%2B%2BqIuQsvlZ5Yx2KdoPJ58nk2HAtv71kcQdOaD6iluohG2N5DX76S4hb%2B6E8Ty%2FZmE6c2mFWnAXWN%2BvW77%2BbaquYEt1r5bIvIQPSYBo%2BYKOr6aitp4l0Hcl%2BGI2qQ8rBvKusRM5ayCC2%2BDSCfYc4J6tA5nU8zRZHysa8EicRSDCxA9wQYUNaOQ6SZiStLWb%2F%2BrG%2BtHGBEp5Ay2Xx48qPG220rmY1plWU19v1c2%2Bc%2BXfNQ7TsqRgqhiOmmb4ZoptVvnYivS7Ldq%2FIIOh4YS00hFDYH1XK%2FFKkAGPbt1nd%2BKPFIufJjdN61xih2AdTevSaRJBGXgfpeiP%2Fn1wsWkdRmiHzV9zAlvr0FS0s%2FqVKiAtkAmSGU7nIWhdl5EYTpYSy2XCO50sej7DjMi847M5ugqBqwHoNl4viVPHC6evuTfCxr745cvYat8vtnZI8%2F0vZmH1mX8PiKvw4LBQleJU6m1sO67SBU7IgRF0NnTHs5KUJ1KWmzGY%2BkUYgWFEND0WAEj90OjmIwgVa15V8q%2F7AkzZkdF4JpjqItsmjZHCHfiqIiYIEwzpGl1QY6pAFyIhG2wI12uvc%2FB5A7L8oJ3CdUZ16M7pOWPGbwHmRNlMMk3lhplJ9z%2FvhkJrIY5OD%2FpoXBeG5NHdSFAgJZxsjZ9WW8v%2F%2Fi2W8mNb5hjOVtls0DZITXT7GCoYp00KCOUiZIpvFCfG13n26EAHjFl8zVW%2F9qDQQf62s7EKhv88KOgU4%2F7vMviSF658dYNT91ho3sCgoeL8SG2ReKkPB09KRfYxTuvw%3D%3D&X-Amz-Signature=1b9fec62f5a5efc62db733644d77c4bcb06840a11999777b70b3c8fba85bdc02&X-Amz-SignedHeaders=host&x-id=PutObject","expiresInSeconds":300}
+
+generated URL (valid 300 s):
+https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/tenants/acme/private/f1dd8c56-c9fd-4691-b7c7-e2cfb69b5cb2-acme-invoice-001.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=ASIA25I5BJSDKWR6XSPT%2F20260915%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20260915T133601Z&X-Amz-Expires=300&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEDUaCmV1LW5vcnRoLTEiSDBGAiEAn4qnMWtS%2BfYxGQ1NZEjzOHYMAK0YOGDKJ8xDcwQQSngCIQDgWVnODGxEDBLjQ6jOCzQVxgacNx%2BnDVwK0Rsqywv0JCqFBAj%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDc1MDA2OTU2NjU5OCIMd7bQqdPcAskRbzhYKtkDFX3E5TILpAFruBRX9FpF9FgXRxj%2F055e0Ts4W%2B0tnul8pXMTd6Wrv9QWmWFsdGTOayrufmWS%2B%2BqIuQsvlZ5Yx2KdoPJ58nk2HAtv71kcQdOaD6iluohG2N5DX76S4hb%2B6E8Ty%2FZmE6c2mFWnAXWN%2BvW77%2BbaquYEt1r5bIvIQPSYBo%2BYKOr6aitp4l0Hcl%2BGI2qQ8rBvKusRM5ayCC2%2BDSCfYc4J6tA5nU8zRZHysa8EicRSDCxA9wQYUNaOQ6SZiStLWb%2F%2BrG%2BtHGBEp5Ay2Xx48qPG220rmY1plWU19v1c2%2Bc%2BXfNQ7TsqRgqhiOmmb4ZoptVvnYivS7Ldq%2FIIOh4YS00hFDYH1XK%2FFKkAGPbt1nd%2BKPFIufJjdN61xih2AdTevSaRJBGXgfpeiP%2Fn1wsWkdRmiHzV9zAlvr0FS0s%2FqVKiAtkAmSGU7nIWhdl5EYTpYSy2XCO50sej7DjMi847M5ugqBqwHoNl4viVPHC6evuTfCxr745cvYat8vtnZI8%2F0vZmH1mX8PiKvw4LBQleJU6m1sO67SBU7IgRF0NnTHs5KUJ1KWmzGY%2BkUYgWFEND0WAEj90OjmIwgVa15V8q%2F7AkzZkdF4JpjqItsmjZHCHfiqIiYIEwzpGl1QY6pAFyIhG2wI12uvc%2FB5A7L8oJ3CdUZ16M7pOWPGbwHmRNlMMk3lhplJ9z%2FvhkJrIY5OD%2FpoXBeG5NHdSFAgJZxsjZ9WW8v%2F%2Fi2W8mNb5hjOVtls0DZITXT7GCoYp00KCOUiZIpvFCfG13n26EAHjFl8zVW%2F9qDQQf62s7EKhv88KOgU4%2F7vMviSF658dYNT91ho3sCgoeL8SG2ReKkPB09KRfYxTuvw%3D%3D&X-Amz-Signature=1b9fec62f5a5efc62db733644d77c4bcb06840a11999777b70b3c8fba85bdc02&X-Amz-SignedHeaders=host&x-id=PutObject
+
+$ curl -X PUT --upload-file acme-invoice-001.txt '<the URL above>'
+HTTP 200
+(setup: globex uploaded tenants/globex/private/22388173-980c-42b5-8557-c799fc8146f0-globex-payroll.txt)
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:36:03 +06 2026
+=== TASK 56 -- presigned download, 60 second expiry ===
+{"key":"tenants/acme/private/f1dd8c56-c9fd-4691-b7c7-e2cfb69b5cb2-acme-invoice-001.txt","method":"GET","url":"https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/tenants/acme/private/f1dd8c56-c9fd-4691-b7c7-e2cfb69b5cb2-acme-invoice-001.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=ASIA25I5BJSDKWR6XSPT%2F20260915%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20260915T133603Z&X-Amz-Expires=60&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEDUaCmV1LW5vcnRoLTEiSDBGAiEAn4qnMWtS%2BfYxGQ1NZEjzOHYMAK0YOGDKJ8xDcwQQSngCIQDgWVnODGxEDBLjQ6jOCzQVxgacNx%2BnDVwK0Rsqywv0JCqFBAj%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDc1MDA2OTU2NjU5OCIMd7bQqdPcAskRbzhYKtkDFX3E5TILpAFruBRX9FpF9FgXRxj%2F055e0Ts4W%2B0tnul8pXMTd6Wrv9QWmWFsdGTOayrufmWS%2B%2BqIuQsvlZ5Yx2KdoPJ58nk2HAtv71kcQdOaD6iluohG2N5DX76S4hb%2B6E8Ty%2FZmE6c2mFWnAXWN%2BvW77%2BbaquYEt1r5bIvIQPSYBo%2BYKOr6aitp4l0Hcl%2BGI2qQ8rBvKusRM5ayCC2%2BDSCfYc4J6tA5nU8zRZHysa8EicRSDCxA9wQYUNaOQ6SZiStLWb%2F%2BrG%2BtHGBEp5Ay2Xx48qPG220rmY1plWU19v1c2%2Bc%2BXfNQ7TsqRgqhiOmmb4ZoptVvnYivS7Ldq%2FIIOh4YS00hFDYH1XK%2FFKkAGPbt1nd%2BKPFIufJjdN61xih2AdTevSaRJBGXgfpeiP%2Fn1wsWkdRmiHzV9zAlvr0FS0s%2FqVKiAtkAmSGU7nIWhdl5EYTpYSy2XCO50sej7DjMi847M5ugqBqwHoNl4viVPHC6evuTfCxr745cvYat8vtnZI8%2F0vZmH1mX8PiKvw4LBQleJU6m1sO67SBU7IgRF0NnTHs5KUJ1KWmzGY%2BkUYgWFEND0WAEj90OjmIwgVa15V8q%2F7AkzZkdF4JpjqItsmjZHCHfiqIiYIEwzpGl1QY6pAFyIhG2wI12uvc%2FB5A7L8oJ3CdUZ16M7pOWPGbwHmRNlMMk3lhplJ9z%2FvhkJrIY5OD%2FpoXBeG5NHdSFAgJZxsjZ9WW8v%2F%2Fi2W8mNb5hjOVtls0DZITXT7GCoYp00KCOUiZIpvFCfG13n26EAHjFl8zVW%2F9qDQQf62s7EKhv88KOgU4%2F7vMviSF658dYNT91ho3sCgoeL8SG2ReKkPB09KRfYxTuvw%3D%3D&X-Amz-Signature=9e98f7df5016e909136651b3261f01c8100771931eaa9cd2a791ae72b9da470f&X-Amz-SignedHeaders=host&x-id=GetObject","expiresInSeconds":60,"expiresAt":"2026-09-15T13:37:03.846Z"}
+--- open it now (works)
+acme invoice 001 -- private to acme -- Tue Sep 15 19:36:01 +06 2026
+
+[HTTP 200]
+
+waiting 61 seconds...
+  10s
+  20s
+  30s
+  40s
+  50s
+  60s
+  61s
+--- open the SAME URL again after 61 s -- S3's exact error
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Request has expired</Message><X-Amz-Expires>60</X-Amz-Expires><Expires>2026-09-15T13:37:03Z</Expires><ServerTime>2026-09-15T13:37:08Z</ServerTime><RequestId>YEHRM4KPC60J4SYE</RequestId><HostId>YcP79Hs4hWBbqZQGvzBgxYZq759F+CpO1aLWeE94rTDSoZ8n56bBlgLWm4muJREhlFSy6stDcq3SrKMUIS0ngadCnNbLP7zt</HostId></Error>
+[HTTP 403]
+
+--- a plain, unsigned request for the same object
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message><RequestId>M0DAY635TZA24HEE</RequestId><HostId>JIkO9UGI/XGXV06iuUiEL+M6ne8Jdin/QaSYB0peL905aYn2pEmhkd3Y18aGGUbE19OEV0afqeYUTO3JQGzKIq4cDBFe0u7r</HostId></Error>
+[HTTP 403]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:37:09 +06 2026
+=== TASK 57 -- two access patterns in one bucket ===
+{"key":"public/acme/b2142f66-3ff2-4acc-a611-0135cfc18267-acme-logo.txt","visibility":"public","method":"PUT","url":"https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/public/acme/b2142f66-3ff2-4acc-a611-0135cfc18267-acme-logo.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=ASIA25I5BJSDGHN5H3HN%2F20260915%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20260915T133709Z&X-Amz-Expires=300&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEDUaCmV1LW5vcnRoLTEiRzBFAiAQWZr9TWMTqdFGHlKVbavnUQurpYwD17Km8aJD1hq7QwIhAN6KFiNxQDxelOA4GDuJtQSN%2FnYPi4p7%2Fh1BEN1G5KSAKoUECP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNzUwMDY5NTY2NTk4Igx4YI9ECt32q99mMaIq2QOtKr1Zacvf7pOlZ73uIapBEavQRHY6MrXGB4Rv2cCegij0783pro6r0t3yU%2FFsgCO%2F2EYn%2BLHbjDl26cfV%2BLWRoKXekAlfV%2BDFfb%2FZS6g1fjf4Upj06%2BamjG3EMkND%2B8KiQRAxQTPeK4B%2FZjbSv4VBMk2YMUuINRT1C%2B27hCffiorV1qk78xxZgpETpAIu2xisM6q1zuI17IgSwKooT5Xobp4WzmdxYew1rtq9twMeWWttIpznHVJeqp1B3fVvcDYUhWZxmsgmvArussqVQC0itHnP%2Bd8ynf34RgzqqYyeuO7UqCiaP5pc0WwCDmxBkpaszlyLJlP2wJwEnCiGiaWklomde89OXodMBo%2F%2FOMthoOMd6Il4pw4zoQWSSSpWdHiRMJv4lTdwCzjKVzNbaaZ2HEzn95uif1x%2FLSzwGWzj3wkEOm%2FiGfX%2FXDoVg%2BP9oetgQ%2BGyt9qNlXu7aBQZQSorpVBOzH571NNdfV3QOPOD32LkX2QvtQNiq3IOlJ2Ct4vwRbICEnZSf8icyStIiBpqIhKI0hFs6thsEELw%2B7%2FvrsjyU2TvLZkifB%2BSK%2BBiNb%2BCcVyg9J8ktQhgaSWxJxZf65noaJgV30mIi2%2BaQcDtQ7M56P9E5HVCszDOkaXVBjqlAU3kNLq70rBEkkMZjF8ZsrvKd3Z0Z9s%2F25VkOLYhgRg8sZikRi%2F%2BRELfnDv4dVHAel6xYHh5V5z8SMScMDVFiEx8jp9juYR%2FA8ixhe08MUPNXtKCcAnD6c0KkqsHKOptk%2BWhz5eTa5%2FAgMLe%2BV%2BSopbm0QJxge%2BZZaiqRpnmTK549LpJaKJEac1%2BlzfF7sGhxgZGZPhGVgnZ8ghyClR6zbEmuw%2FpQA%3D%3D&X-Amz-Signature=921444b8eb4693f046833fbec99ca2ca96b2ceef72be9bf816976ed921d4ed70&X-Amz-SignedHeaders=host&x-id=PutObject","expiresInSeconds":300,"publicUrl":"https://abdur-notes-750069566598.s3.eu-north-1.amazonaws.com/public/acme/b2142f66-3ff2-4acc-a611-0135cfc18267-acme-logo.txt"}
+HTTP 200
+
+--- 57a. plain URL to public/ -- no signature, anyone
+acme public logo placeholder -- Tue Sep 15 19:36:01 +06 2026
+
+[HTTP 200]
+
+--- 57b. plain URL to tenants/acme/private/ -- no signature
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message><RequestId>R9BXSVM778YMR7EF</RequestId><HostId>eNIsA/pSuaro1Er+JSd5WDlFCslZqbsnh2iSSBzxP7vkvtQVKi/nhMZwtSj1EJTK9CSC/tJoraveg3RSVJ5BKKxoL7bijs7n</HostId></Error>
+[HTTP 403]
+
+--- 57c. presigned URL to that same private file
+acme invoice 001 -- private to acme -- Tue Sep 15 19:36:01 +06 2026
+
+[HTTP 200]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:37:12 +06 2026
+=== TASK 58 -- tenant isolation: acme asks for a globex key ===
+globex's key (acme knows it): tenants/globex/private/22388173-980c-42b5-8557-c799fc8146f0-globex-payroll.txt
+
+$ curl http://abdur-notes-alb-2056595441.eu-north-1.elb.amazonaws.com/api/attachments/<globex key>/download-url -H 'X-Tenant: acme'
+{"error":"forbidden: this key does not belong to your tenant"}
+[HTTP 403]
+
+control -- the owner asks for the same key:
+  globex -> [HTTP 200] (a URL was signed)
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:37:13 +06 2026
+=== done ===
