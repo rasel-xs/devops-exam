@@ -1979,4 +1979,94 @@ billable resource of mine existed.
      because CloudShell refused to start ("account verification is in progress").
      Remove at the end:  rm -rf ~/aws-cli ~/.aws /opt/homebrew/bin/aws /opt/homebrew/bin/aws_completer -->
 
-<!-- status: not started -->
+**Result: every resource I created is gone, verified by the brief's four
+listings and by a name search across every service I used.** Script
+[`c5-task63-cleanup.sh`](c5-task63-cleanup.sh), transcript
+`evidence/c5-task63-cleanup.txt` (2026-09-15, 22:04:54 → 22:10:58 +06).
+Billing screenshot: `evidence/c5-task63-billing.png`.
+
+#### Inventory first, because the account is shared
+
+Before deleting anything, a read-only inventory listed every resource in the
+services I had used. It found two things that are **not mine** and must survive:
+another student's S3 bucket `ashik-notes-attachments-750069566598`, and the
+account's GitHub OIDC provider (created by another student on 2026-09-14; my
+role only referenced it — task 53). The script therefore refuses to touch any
+name that does not start with `abdur` (`mine()` stops the run), and it deletes
+by exact name, never by listing-and-deleting everything.
+
+#### Order — nothing deleted while something still depends on it
+
+| # | Deleted | Why this position | Result |
+| --- | --- | --- | --- |
+| 1 | scaling policy `abdur-notes-cpu50`, scalable target | otherwise autoscaling could start tasks again; target tracking removes its two alarms with the policy | `alarms left: 0` |
+| 2 | service `abdur-notes-svc` (desired 0, `--force`) | tasks hold ENIs in the security groups and targets in the TG | `INACTIVE`, `running tasks left: 0` |
+| 3 | ALB `abdur-notes-alb` (listener with it), target group `abdur-notes-tg` | a TG cannot be deleted while a listener uses it | deleted |
+| 4 | RDS `abdur-notes-db` — `--skip-final-snapshot --delete-automated-backups` | a retained snapshot or backup would keep billing; the RDS-managed master secret is deleted with the instance | deleted in 1 m 36 s, `secrets left: 0` |
+| 5 | task definitions `abdur-notes-api:1-4` — deregister, then delete | deregistered revisions still exist; `delete-task-definitions` removes them | `DELETE_IN_PROGRESS` (completes asynchronously) |
+| 6 | cluster `abdur-exam-cluster` | empty now; Container Insights (task 52) goes with it | `INACTIVE` |
+| 7 | security groups db → app → alb | only after zero ENIs remain, and in reverse order of the rules that reference them (db-sg references app-sg, app-sg references alb-sg) | all three deleted |
+| 8 | ECR `abdur-notes-api` `--force` | with every image (`v1.0.69`, `v1.0.91`, `v1.0.96`, `v1.0.100` and their per-platform manifests) | deleted |
+| 9 | S3 `abdur-notes-750069566598` — objects, then bucket | a bucket must be empty; the last three objects from the C3 runs were removed | deleted |
+| 10 | log group `/ecs/abdur-notes-api` | log storage bills per GB-month | deleted |
+| 11 | roles `abdur-github-actions-ecs-deploy`, `abdur-ecs-task-role`, `abdur-ecs-task-execution-role` | inline policies deleted and the AWS-managed `AmazonECSTaskExecutionRolePolicy` detached first — a role with policies cannot be deleted | deleted |
+| 12 | user `abdur-exam-deployer`, policy `abdur-exam-deployer-policy` | the policy detached first; its access key had already been deleted after task 47 | deleted |
+
+Two things created earlier had already been removed at the time: the CloudFront
+Origin Access Control from the refused distribution (task 57, deleted
+immediately), and the CloudShell environment (Constraints §4).
+
+#### The brief's checks
+
+```
+$ aws ecs list-clusters
+{ "clusterArns": [] }
+$ aws elbv2 describe-load-balancers
+{ "LoadBalancers": [] }
+$ aws s3 ls
+2026-09-15 22:02:17 ashik-notes-attachments-750069566598
+$ aws ec2 describe-instances --query 'Reservations[].Instances[?State.Name!=`terminated`].InstanceId'
+[]
+```
+
+The one bucket listed is **another student's**, created at 22:02 — two minutes
+before my cleanup began, long after mine existed — and is deliberately left
+alone. I never created EC2 instances. In a shared account "nothing left" has to
+mean "nothing of mine left", so the script also searched every service I used
+for anything named `abdur`:
+
+```
+ECS clusters / task definitions / load balancers / target groups / RDS / RDS secret /
+security groups / ECR / S3 / log groups / IAM roles / IAM users / IAM policies / alarms
+→ all empty
+```
+
+#### Billing
+
+The Billing screenshot is compared with `evidence/c0-billing-mtd.png` (month to
+date $10.61 on 2026-09-14, before any billable resource of mine existed). Two
+cautions in reading it: the figures are for the **whole shared account**, so
+other students' spend continues to appear; and AWS billing data lags by up to a
+day, so the last hours of my ALB, Fargate tasks and RDS will still accrue into
+the total after deletion. The proof that nothing of mine keeps running is the
+listings above, not the bill.
+
+Estimated cost of what I ran (list prices, eu-north-1): RDS `db.t3.micro` about
+**$0.022/h** from 2026-09-14 ~23:30 to 2026-09-15 22:08 (~22.5 h ≈ $0.50 incl.
+storage), ALB about **$0.025/h + LCU** from 01:40 to 22:07 (~20.5 h ≈ $0.55),
+two 0.25 vCPU / 0.5 GB Fargate tasks about **$0.012/h each** (~20.5 h ≈ $0.50,
+plus the short-lived extra tasks in tasks 52 and 54), Container Insights for
+~20 h, a few cents of ECR, S3, Secrets Manager and CloudWatch Logs — **roughly
+$1.6–2.0 in total**.
+
+#### What still refers to AWS, and why it is harmless
+
+- The `deploy-ecs` job in `.github/workflows/deploy.yml` now has no role to
+  assume; any push to `main` without `[skip ci]` would fail at its first step.
+  It is left in place as the task 53 deliverable; every commit after the cleanup
+  uses `[skip ci]`.
+- The Scenario B/C4 deployment on the VPS does not use AWS at all.
+- Locally: the AWS CLI installed for C2–C5 and `hey` are removed from the laptop
+  after the final evidence (see the note below).
+
+<!-- status: DONE except the billing screenshot -->

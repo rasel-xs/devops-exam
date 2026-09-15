@@ -1,0 +1,123 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:04:54 +06 2026
+=== 1. autoscaling: policy, scalable target (target tracking deletes its alarms) ===
+alarms left: 0
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:04:57 +06 2026
+=== 2. ECS service: scale to 0, delete, wait until INACTIVE ===
+0
+DRAINING
+service INACTIVE
+running tasks left: 0
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:07:44 +06 2026
+=== 3. load balancer, listener, target group ===
+ALB deleted (its listener with it)
+target group deleted
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:07:56 +06 2026
+=== 4. RDS: no final snapshot, no retained automated backups (its managed secret goes with it) ===
+abdur-notes-db	deleting
+waiting for the instance to be deleted (usually 5-10 minutes)...
+RDS instance deleted
+secrets left: 0
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:09:32 +06 2026
+=== 5. task definitions: deregister, then delete ===
+abdur-notes-api	1	INACTIVE
+abdur-notes-api	2	INACTIVE
+abdur-notes-api	3	INACTIVE
+abdur-notes-api	4	INACTIVE
+abdur-notes-api	1	DELETE_IN_PROGRESS
+abdur-notes-api	2	DELETE_IN_PROGRESS
+abdur-notes-api	3	DELETE_IN_PROGRESS
+abdur-notes-api	4	DELETE_IN_PROGRESS
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:09:39 +06 2026
+=== 6. ECS cluster (Container Insights goes with it) ===
+abdur-exam-cluster	INACTIVE
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:09:40 +06 2026
+=== 7. security groups -- only once no network interface uses them ===
+{
+    "Return": true,
+    "GroupId": "sg-06df0ecfa3324c3fb"
+}
+abdur-notes-db-sg (sg-06df0ecfa3324c3fb) deleted
+{
+    "Return": true,
+    "GroupId": "sg-0cdfa2df06a0ca703"
+}
+abdur-notes-app-sg (sg-0cdfa2df06a0ca703) deleted
+{
+    "Return": true,
+    "GroupId": "sg-03082ef58d9f2db8a"
+}
+abdur-notes-alb-sg (sg-03082ef58d9f2db8a) deleted
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:09:49 +06 2026
+=== 8. ECR repository and every image in it ===
+abdur-notes-api
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:09:51 +06 2026
+=== 9. S3 bucket: every object, then the bucket ===
+delete: s3://abdur-notes-750069566598/tenants/globex/private/24052d54-55fa-4bbe-8663-e30c4f4d021c-globex-payroll.txt
+delete: s3://abdur-notes-750069566598/public/acme/b2142f66-3ff2-4acc-a611-0135cfc18267-acme-logo.txt
+delete: s3://abdur-notes-750069566598/tenants/acme/private/4de3d7bd-e61a-4a60-9982-33ddbac34b26-acme-invoice-001.txt
+bucket deleted
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:10:00 +06 2026
+=== 10. CloudWatch log group ===
+log group deleted
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:10:01 +06 2026
+=== 11. IAM roles -- inline and attached policies first ===
+  abdur-github-actions-ecs-deploy: inline abdur-github-actions-ecs-deploy-policy deleted
+role abdur-github-actions-ecs-deploy deleted
+  abdur-ecs-task-role: inline abdur-ecs-task-role-s3 deleted
+role abdur-ecs-task-role deleted
+  abdur-ecs-task-execution-role: inline abdur-read-notes-db-secret deleted
+  abdur-ecs-task-execution-role: detached arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+role abdur-ecs-task-execution-role deleted
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:10:19 +06 2026
+=== 12. IAM user abdur-exam-deployer and its customer-managed policy ===
+  detached arn:aws:iam::750069566598:policy/abdur-exam-deployer-policy
+user abdur-exam-deployer deleted
+policy arn:aws:iam::750069566598:policy/abdur-exam-deployer-policy deleted
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:10:37 +06 2026
+=== THE BRIEF'S CHECKS ===
+$ aws ecs list-clusters
+{
+    "clusterArns": []
+}
+$ aws elbv2 describe-load-balancers
+{
+    "LoadBalancers": []
+}
+$ aws s3 ls
+2026-09-15 22:02:17 ashik-notes-attachments-750069566598
+$ aws ec2 describe-instances --query 'Reservations[].Instances[?State.Name!=`terminated`].InstanceId'
+[]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:10:42 +06 2026
+=== AND MINE: anything named abdur left anywhere? ===
+ECS clusters           
+task definitions       
+load balancers         
+target groups          
+RDS                    
+RDS secret             
+security groups        
+ECR                    
+S3                     
+log groups             
+IAM roles              
+IAM users              
+IAM policies           
+alarms                 
+(an empty column means nothing is left)
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 22:10:58 +06 2026
+=== cleanup done ===
