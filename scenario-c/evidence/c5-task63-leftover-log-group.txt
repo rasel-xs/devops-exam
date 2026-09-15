@@ -1,0 +1,13 @@
+# Found after task 63, during a read-only survey of the whole account (2026-09-15 ~23:20 +06).
+# The cleanup's name search checked CloudWatch log groups under /ecs/abdur only. Container
+# Insights (enabled in task 52) had created its own group under /aws/ecs/containerinsights/,
+# which the search never looked at.
+
+$ aws logs describe-log-groups --region eu-north-1 --log-group-name-prefix /aws/ecs/containerinsights/abdur
+/aws/ecs/containerinsights/abdur-exam-cluster/performance	576273 bytes
+
+$ aws logs delete-log-group --region eu-north-1 --log-group-name /aws/ecs/containerinsights/abdur-exam-cluster/performance
+deleted
+
+# Re-checked every enabled region for any log group whose name contains "abdur": none.
+# Cost while it existed: 576 KB of CloudWatch Logs storage -- a fraction of a cent.

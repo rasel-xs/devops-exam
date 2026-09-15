@@ -2047,6 +2047,18 @@ security groups / ECR / S3 / log groups / IAM roles / IAM users / IAM policies /
 → all empty
 ```
 
+#### One thing the cleanup missed — found and deleted afterwards
+
+The name search above looked for log groups under `/ecs/abdur`. **Container
+Insights**, switched on in task 52, had created its own log group under a
+different prefix: `/aws/ecs/containerinsights/abdur-exam-cluster/performance`
+(576 KB, eu-north-1). Deleting the cluster does not delete it. It was found the
+same evening by a read-only survey of every region, deleted, and every region
+re-checked for any log group containing `abdur` — none
+(`evidence/c5-task63-leftover-log-group.txt`). The lesson for the script: search
+for the *owner's name anywhere in the resource name*, not under the prefixes I
+remember choosing, because services create resources of their own.
+
 #### Billing
 
 `evidence/c5-task63-billing.png`, taken 2026-09-15 22:59 (+06), 49 minutes
