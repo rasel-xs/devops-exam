@@ -22,6 +22,8 @@ want()  { [ "$PART" = all ] || [ "$PART" = "$1" ]; }
 # show: prints the command, then the body (first 400 chars) and the status
 show()  { echo "\$ curl $*"; curl -sS --max-time 8 -w '\n[HTTP %{http_code}]\n' "$@" | cut -c1-400; echo; }
 titles(){ curl -sS --max-time 8 "$@" | grep -oE '"title":"[^"]*"' | head -3 | tr '\n' ' '; echo; }
+# three separate requests, each a new connection: one lucky answer is not proof
+tries() { for i in 1 2 3; do printf '  try %s: ' "$i"; curl -sS --max-time 8 "$@" | grep -oE '"title":"[^"]*"' | head -1; done; }
 
 [ -f "$INSTALL" ] || curl -fsSL https://raw.githubusercontent.com/rasel-xs/devops-exam/main/scenario-c/c4-install.sh -o "$INSTALL"
 
@@ -105,14 +107,14 @@ fi
 if want 623; then
   step "TASK 62.3 -- can a client fake the tenant header?  (1) the BUGGY config"
   bash "$INSTALL" --header buggy --metrics blocked --nginx-only | grep -E 'X-Tenant|reloaded'
-  echo "\$ curl -H 'X-Tenant: globex' http://acme.$BASE:$PORT/api/notes"
-  printf '  titles: '; titles -H 'X-Tenant: globex' "http://acme.$BASE:$PORT/api/notes"
+  echo "\$ curl -H 'X-Tenant: globex' http://acme.$BASE:$PORT/api/notes      (x3)"
+  tries -H 'X-Tenant: globex' "http://acme.$BASE:$PORT/api/notes?limit=1"
   echo "  ^ acme's hostname, globex's notes: VULNERABLE"
   step "TASK 62.3 -- (2) FIXED: nginx always overwrites X-Tenant from the hostname"
   bash "$INSTALL" --header fixed --metrics blocked --nginx-only | grep -E 'X-Tenant|reloaded'
-  echo "\$ curl -H 'X-Tenant: globex' http://acme.$BASE:$PORT/api/notes"
-  printf '  titles: '; titles -H 'X-Tenant: globex' "http://acme.$BASE:$PORT/api/notes"
-  echo "  ^ the fake header is replaced: acme's notes"
+  echo "\$ curl -H 'X-Tenant: globex' http://acme.$BASE:$PORT/api/notes      (x3)"
+  tries -H 'X-Tenant: globex' "http://acme.$BASE:$PORT/api/notes?limit=1"
+  echo "  ^ the fake header is replaced by nginx: acme's notes"
 fi
 
 # -----------------------------------------------------------------------------
@@ -125,7 +127,8 @@ if want 624; then
   echo "  ^ acme's hostname shows globex's traffic, routes and status codes"
   step "TASK 62.4 -- (2) FIXED"
   bash "$INSTALL" --header fixed --metrics blocked --nginx-only | grep -E 'metrics|reloaded'
-  show "http://acme.$BASE:$PORT/metrics"
+  echo "\$ curl http://acme.$BASE:$PORT/metrics      (x3, status only)"
+  for i in 1 2 3; do curl -sS -o /dev/null --max-time 8 -w "  try $i: [HTTP %{http_code}]\n" "http://acme.$BASE:$PORT/metrics"; done
   echo "--- Prometheus still scrapes the app directly, bypassing tenant hostnames:"
   echo "\$ curl http://127.0.0.1:3140/metrics | grep -c http_requests_total"
   curl -sS http://127.0.0.1:3140/metrics | grep -c http_requests_total

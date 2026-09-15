@@ -1,0 +1,172 @@
+# Parts 59-62.2 pasted by the user from the VPS (/root/abdur-c4-demo-*.txt).
+# Parts 62.3 and 62.4 of THIS run are kept below as a FAILED run: in their
+# "(2) FIXED" halves the test ran inside the nginx reload window and got the
+# OLD config's answer (globex's notes; the full /metrics page). The config
+# itself was correct -- three requests each from the laptop minutes later all
+# returned acme's notes and 404. Both parts were re-run after the install
+# script learned to wait for the reload to take effect: c4-demo-run2-623-624.txt.
+# The /metrics page in 62.4 (2) was several hundred lines and is summarised.
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:34:07 CEST 2026
+=== TASK 59 -- wildcard DNS + one regex server block + ONE app instance ===
+--- acme.abdur.169.58.246.108.nip.io:8141/api/notes
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/api/notes?limit=3
+  titles: "title":"Welcome to Acme Corp" "title":"Getting started" "title":"Your address"
+  [HTTP 200]
+--- globex.abdur.169.58.246.108.nip.io:8141/api/notes
+$ curl http://globex.abdur.169.58.246.108.nip.io:8141/api/notes?limit=3
+  titles: "title":"Welcome to Globex Corporation" "title":"Getting started" "title":"Your address"
+  [HTTP 200]
+--- a tenant that does not exist: clean 404, no crash
+$ curl http://doesnotexist.abdur.169.58.246.108.nip.io:8141/api/notes
+{"error":"unknown tenant: doesnotexist"}
+[HTTP 404]
+
+--- DNS: every name under the base resolves to this one server
+  acme.abdur.169.58.246.108.nip.io         -> 169.58.246.108
+  globex.abdur.169.58.246.108.nip.io       -> 169.58.246.108
+  doesnotexist.abdur.169.58.246.108.nip.io -> 169.58.246.108
+--- the one app serving all of them
+$ docker service ls --filter name=abdur_notes_app
+ID             NAME              MODE         REPLICAS   IMAGE                                 PORTS
+1cl4iz2qln69   abdur_notes_app   replicated   1/1        ghcr.io/rasel-xs/notes-api:v1.0.100   *:3140->3000/tcp
+$ docker service ps abdur_notes_app --filter desired-state=running
+NAME                IMAGE                                 NODE         CURRENT STATE
+abdur_notes_app.1   ghcr.io/rasel-xs/notes-api:v1.0.100   vmi3536696   Running 4 minutes ago
+--- the one nginx server block that matches every tenant
+54:    listen 8141;
+55:    server_name "~^(?<abdur_slug>[a-z0-9][a-z0-9-]{1,30}[a-z0-9])\.abdur\.169\.58\.246\.108\.nip\.io$";
+84:    listen 8141 default_server;
+85:    server_name _;
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:34:07 CEST 2026
+=== done ===
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:35:06 CEST 2026
+=== TASK 60 -- provision 'initech', then IMMEDIATELY curl its subdomain ===
+before: nginx config last changed 2026-09-15 17:29:17
+
+$ curl -X POST http://abdur.169.58.246.108.nip.io:8141/api/tenants -H Content-Type: application/json -d {"slug":"initech","name":"Initech LLC"}
+{"tenant":{"id":3,"slug":"initech","name":"Initech LLC"},"url":"http://initech.abdur.169.58.246.108.nip.io:8141/","seededNotes":3,"s3Prefix":"tenants/initech/"}
+[HTTP 201]
+
+$ curl http://initech.abdur.169.58.246.108.nip.io:8141/api/notes      <- no DNS or nginx change in between
+  titles: "title":"Welcome to Initech LLC" "title":"Getting started" "title":"Your address"
+  [HTTP 200]
+after:  nginx config last changed 2026-09-15 17:29:17
+
+--- validation: reserved names and a dotted slug are refused
+  slug www        -> {"error":"slug \"www\" is reserved"}  [HTTP 422]
+  slug api        -> {"error":"slug \"api\" is reserved"}  [HTTP 422]
+  slug admin      -> {"error":"slug \"admin\" is reserved"}  [HTTP 422]
+  slug acme.evil  -> {"error":"slug must not contain dots (it would become a nested subdomain)"}  [HTTP 422]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:35:07 CEST 2026
+=== done ===
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:35:39 CEST 2026
+=== TASK 61 -- custom domain: notes.globex-corp.169.58.246.108.sslip.io -> tenant globex ===
+(route: a second real domain, sslip.io, whose names resolve to the IP inside them)
+  notes.globex-corp.169.58.246.108.sslip.io -> 169.58.246.108
+
+1. globex claims it (request arrives on globex's own subdomain)
+$ curl -X POST http://globex.abdur.169.58.246.108.nip.io:8141/api/domains -H Content-Type: application/json -d {"domain":"notes.globex-corp.169.58.246.108.sslip.io"}
+{"domain":"notes.globex-corp.169.58.246.108.sslip.io","verified":false,"tenant":"globex","next":"point an A record for notes.globex-corp.169.58.246.108.sslip.io at 169.58.246.108, then POST /api/domains/notes.globex-corp.169.58.246.108.sslip.io/verify"}
+[HTTP 201]
+
+2. before verification the domain serves nothing
+$ curl http://notes.globex-corp.169.58.246.108.sslip.io:8141/api/notes
+<!doctype html><title>Domain not configured</title>
+<h1>Domain not configured</h1>
+<p><b>notes.globex-corp.169.58.246.108.sslip.io</b> is not connected to any workspace on this service.</p>
+<p>If this is your domain, add it in your workspace settings and verify it.</p>
+[HTTP 404]
+
+3. verify: the app resolves the name and checks it points here
+$ curl -X POST http://globex.abdur.169.58.246.108.nip.io:8141/api/domains/notes.globex-corp.169.58.246.108.sslip.io/verify
+{"domain":"notes.globex-corp.169.58.246.108.sslip.io","verified":true,"addresses":["169.58.246.108"]}
+[HTTP 200]
+
+4. now the custom domain is globex
+$ curl http://notes.globex-corp.169.58.246.108.sslip.io:8141/api/notes
+  titles: "title":"Welcome to Globex Corporation" "title":"Getting started" "title":"Your address"
+  [HTTP 200]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:35:43 CEST 2026
+=== done ===
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:36:05 CEST 2026
+=== TASK 62.1 -- DNS pointed at us, domain never added or verified ===
+$ curl http://notes.unknowncompany.169.58.246.108.sslip.io:8141/
+<!doctype html><title>Domain not configured</title>
+<h1>Domain not configured</h1>
+<p><b>notes.unknowncompany.169.58.246.108.sslip.io</b> is not connected to any workspace on this service.</p>
+<p>If this is your domain, add it in your workspace settings and verify it.</p>
+[HTTP 404]
+
+$ curl http://notes.unknowncompany.169.58.246.108.sslip.io:8141/api/notes
+<!doctype html><title>Domain not configured</title>
+<h1>Domain not configured</h1>
+<p><b>notes.unknowncompany.169.58.246.108.sslip.io</b> is not connected to any workspace on this service.</p>
+<p>If this is your domain, add it in your workspace settings and verify it.</p>
+[HTTP 404]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:36:06 CEST 2026
+=== done ===
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:36:32 CEST 2026
+=== TASK 62.2 -- a second tenant claims a domain globex already has ===
+$ curl -X POST http://acme.abdur.169.58.246.108.nip.io:8141/api/domains -H Content-Type: application/json -d {"domain":"notes.globex-corp.169.58.246.108.sslip.io"}
+{"error":"domain notes.globex-corp.169.58.246.108.sslip.io is already claimed by another workspace","constraint":"tenant_domains_pkey"}
+[HTTP 409]
+
+--- what enforces it: the primary key, in the database
+                       Table "public.tenant_domains"
+   Column   |            Type             | Collation | Nullable | Default
+------------+-----------------------------+-----------+----------+---------
+ domain     | text                        |           | not null |
+ tenant_id  | integer                     |           | not null |
+ verified   | boolean                     |           | not null | false
+ created_at | timestamp without time zone |           |          | now()
+Indexes:
+    "tenant_domains_pkey" PRIMARY KEY, btree (domain)
+Foreign-key constraints:
+    "tenant_domains_tenant_id_fkey" FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:36:33 CEST 2026
+=== done ===
+
+# ------------------------------------------------------------ FAILED PARTS ---
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:37:01 CEST 2026
+=== TASK 62.3 -- can a client fake the tenant header?  (1) the BUGGY config ===
+73:        proxy_set_header X-Tenant $abdur_tenant_buggy;
+$ curl -H 'X-Tenant: globex' http://acme.abdur.169.58.246.108.nip.io:8141/api/notes
+  titles: "title":"Welcome to Globex Corporation" ...
+  ^ acme's hostname, globex's notes: VULNERABLE
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:37:02 CEST 2026
+=== TASK 62.3 -- (2) FIXED: nginx always overwrites X-Tenant from the hostname ===
+73:        proxy_set_header X-Tenant $abdur_host_tenant;
+$ curl -H 'X-Tenant: globex' http://acme.abdur.169.58.246.108.nip.io:8141/api/notes
+  titles: "title":"Welcome to Globex Corporation" ...        <-- WRONG: answered by an old worker (reload window)
+  ^ the fake header is replaced: acme's notes                <-- the script's label, not the result
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:37:33 CEST 2026
+=== TASK 62.4 -- one more isolation bug: /metrics on a tenant hostname  (1) BUG ===
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/metrics | grep 'tenant="globex"'
+http_requests_total{route="/api/notes",method="GET",tenant="globex",status="200",app="notes-api"} 9
+http_requests_total{route="/api/domains",method="POST",tenant="globex",status="201",app="notes-api"} 1
+http_requests_total{route="/api/domains/:domain/verify",method="POST",tenant="globex",status="200",app="notes-api"} 1
+http_request_duration_seconds_bucket{le="0.005",app="notes-api",route="/api/notes",method="GET",tenant="globex"} 0
+  ^ acme's hostname shows globex's traffic, routes and status codes
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:37:34 CEST 2026
+=== TASK 62.4 -- (2) FIXED ===
+62:    location = /metrics { return 404; }
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/metrics
+[the full Prometheus page came back -- several hundred lines including tenant="acme", "globex",
+ "initech" series]                                           <-- WRONG: old worker (reload window)
+
+# Checked from the laptop over the internet afterwards (same config):
+#   spoof try 1-3: "title":"Welcome to Acme Corp"  (x3)
+#   metrics try 1-3: [HTTP 404]  (x3)

@@ -80,6 +80,16 @@ if ! nginx -t 2>&1; then
   die "nginx -t failed -- previous config restored, nothing reloaded"
 fi
 systemctl reload nginx || die "reload failed"
+# `systemctl reload` only SENDS the reload signal and returns at once. Until the
+# master has started new workers and told the old ones to stop accepting, an
+# old worker -- still running the PREVIOUS config -- can take the next
+# connection. Demo run 1 of 62.3/62.4 tested inside that window and got the old
+# behaviour back. So wait for old workers to finish shutting down, then settle.
+for i in $(seq 1 50); do
+  pgrep -f 'nginx: worker process is shutting down' >/dev/null || break
+  sleep 0.2
+done
+sleep 2
 echo "reloaded. X-Tenant line and /metrics rule now in effect:"
 grep -nE 'proxy_set_header X-Tenant|location = /metrics|62.4 BUG' "$AVAIL"
 [ "$NGINX_ONLY" = 1 ] && { stamp; echo "=== nginx-only: done ==="; exit 0; }

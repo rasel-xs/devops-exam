@@ -1,0 +1,47 @@
+# Pasted by the user from the VPS terminal (copy on the VPS: /root/abdur-c4-install.txt).
+root@vmi3536696:~# curl -fsSL https://raw.githubusercontent.com/rasel-xs/devops-exam/7a8c2d59f5c76735cb66f7f2970f85114f3b2108/scenario-c/c4-install.sh -o /root/abdur-c4-install.sh
+root@vmi3536696:~# C4_REF=7a8c2d59f5c76735cb66f7f2970f85114f3b2108 bash /root/abdur-c4-install.sh 2>&1 | tee /root/abdur-c4-install.txt
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:16 CEST 2026
+=== nginx: render abdur-c4 (header=fixed, metrics=blocked) ===
+template: 7a8c2d59f5c76735cb66f7f2970f85114f3b2108, placeholders ok
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+reloaded. X-Tenant line and /metrics rule now in effect:
+62:    location = /metrics { return 404; }
+73:        proxy_set_header X-Tenant $abdur_host_tenant;
+92:    location = /metrics { return 404; }
+101:        proxy_set_header X-Tenant "";
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:17 CEST 2026
+=== app: is the C4 code deployed? (needs the Deploy run's VPS job approved first) ===
+image: ghcr.io/rasel-xs/notes-api:v1.0.100
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:19 CEST 2026
+=== app: host mode env + a single replica ===
+waiting for a container with the new env...
+TENANT_BASE_DOMAIN=abdur.169.58.246.108.nip.io
+PUBLIC_PORT=8141
+PUBLIC_IP=169.58.246.108
+abdur_notes_app  replicas 2/1  ghcr.io/rasel-xs/notes-api:v1.0.100
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:49 CEST 2026
+=== database: migrations (adds tenants.name, tenant_domains) ===
+migrations applied
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:50 CEST 2026
+=== tenants acme and globex, provisioned through the new endpoint itself ===
+{"tenant":{"id":1,"slug":"acme","name":"Acme Corp"},"url":"http://acme.abdur.169.58.246.108.nip.io:8141/","seededNotes":3,"s3Prefix":"tenants/acme/"}  [HTTP 201]
+{"tenant":{"id":2,"slug":"globex","name":"Globex Corporation"},"url":"http://globex.abdur.169.58.246.108.nip.io:8141/","seededNotes":3,"s3Prefix":"tenants/globex/"}  [HTTP 201]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:51 CEST 2026
+=== smoke test through nginx ===
+acme     {"page":1,"limit":1,"count":1,"notes":[{"id":1,"tenant_id":1,"title":"Welcome to Acme Corp","body":"This workspace was provisioned automatically.","created_at":
+globex   {"page":1,"limit":1,"count":1,"notes":[{"id":4,"tenant_id":2,"title":"Welcome to Globex Corporation","body":"This workspace was provisioned automatically.","cre
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:29:52 CEST 2026
+=== install done: header=fixed metrics=blocked ===
+
+# Note: "replicas 2/1" is the moment of the scale-down from 3 to 1 -- the old
+# task was still shutting down when `docker service ls` ran. Task 59's demo
+# shows the settled state.
