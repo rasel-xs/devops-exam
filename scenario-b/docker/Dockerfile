@@ -64,6 +64,16 @@ COPY --chown=node:node package.json ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node db ./db
 
+# Scenario C task 53: the Amazon RDS root certificates, so the ECS task can use
+# sslmode=verify-full (certificate chain AND hostname) instead of task 50's
+# sslmode=no-verify. The bundle is committed to the repository rather than
+# downloaded here: a build-time download is one more thing that can change under
+# me, and a committed file is reviewable and pinned by git. It was fetched once
+# over HTTPS from https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+# (sha256 e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3).
+# Harmless elsewhere: the VPS deployment's local Postgres URL never references it.
+COPY --chown=node:node certs ./certs
+
 # Everything below this line runs unprivileged. Note this is USER, not just
 # "the app drops privileges itself" -- the container's PID 1 is non-root, so a
 # container escape starts from uid 1000, not from root.
