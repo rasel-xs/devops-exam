@@ -809,7 +809,7 @@ step checks its result, the script stopped instead of carrying on with a
 half-known state. Run 2 reported the rule as already present and created
 everything else.
 
-<!-- status: DONE except the screenshot c2-task51-different-tasks.png -->
+<!-- status: DONE -->
 
 
 ### Task 52 (6 marks) — Autoscaling
@@ -1302,7 +1302,7 @@ URL is made, so the URL would carry a checksum that no real file matches and
 `requestChecksumCalculation: 'WHEN_REQUIRED'`; the offline test confirmed the
 generated URL has no checksum parameters, and the upload returned 200.
 
-<!-- status: DONE except the two screenshots -->
+<!-- status: DONE -->
 
 ### Task 56 (4 marks) — Presigned download and expiry
 
@@ -1388,7 +1388,7 @@ window in which the answer is "anyone". The bandwidth cost is acceptable for the
 small documents this app stores. The 60 s TTL stays as defence in depth for any
 URL that is issued.
 
-<!-- status: DONE except the screenshot -->
+<!-- status: DONE -->
 
 ### Task 57 (6 marks) — Two access patterns in one bucket
 
@@ -1401,7 +1401,9 @@ works.
 
 Screenshots: `evidence/c3-task57a-public-plain-200.png`,
 `evidence/c3-task57b-private-plain-denied.png`,
-`evidence/c3-task57c-private-presigned-200.png`.
+`evidence/c3-task57c-private-presigned-200.png` — taken on the exam VPS from one
+run of the same script (15:51 CEST), so each shows all three results; the file
+name says which one it is evidence for.
 
 ```
 --- 57a. plain URL to public/ -- no signature, anyone
@@ -1467,7 +1469,7 @@ Uploads to `public/` still go through a presigned PUT from the app; the policy
 opens reading only. With a verified account I would move `public/*` behind
 CloudFront and turn all four blocks back on.
 
-<!-- status: DONE except the three screenshots -->
+<!-- status: DONE -->
 
 ### Task 58 (5 marks) — Tenant isolation
 
@@ -1510,7 +1512,7 @@ as strong as tenant identification. That is exactly C4 task 62.3, where the
 tenant must come from the `Host` header set by the proxy and a client-supplied
 `X-Tenant` must be overwritten.
 
-<!-- status: DONE except the screenshot -->
+<!-- status: DONE -->
 
 ---
 
