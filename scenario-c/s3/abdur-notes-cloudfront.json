@@ -1,0 +1,49 @@
+{
+  "DistributionConfig": {
+    "CallerReference": "abdur-notes-public-1789478640",
+    "Comment": "abdur-notes public/* read (task 57) - exam-token root-vmi3536696-1788282556-1536d427",
+    "Enabled": true,
+    "PriceClass": "PriceClass_100",
+    "Origins": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "Id": "s3-abdur-notes",
+          "DomainName": "abdur-notes-750069566598.s3.eu-north-1.amazonaws.com",
+          "S3OriginConfig": {
+            "OriginAccessIdentity": ""
+          },
+          "OriginAccessControlId": "EMOQKNAYRSSXD"
+        }
+      ]
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "s3-abdur-notes",
+      "ViewerProtocolPolicy": "allow-all",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": [
+          "GET",
+          "HEAD"
+        ],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": [
+            "GET",
+            "HEAD"
+          ]
+        }
+      },
+      "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+      "Compress": true
+    }
+  },
+  "Tags": {
+    "Items": [
+      {
+        "Key": "exam-token",
+        "Value": "root-vmi3536696-1788282556-1536d427"
+      }
+    ]
+  }
+}

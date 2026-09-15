@@ -1,0 +1,14 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:23:57 +06 2026
+=== Origin Access Control (CloudFront signs its requests to S3 with SigV4)
+OAC: EMOQKNAYRSSXD
+=== distribution
+
+aws: [ERROR]: An error occurred (ParamValidation): Parameter validation failed:
+Unknown parameter in DistributionConfigWithTags.DistributionConfig.DefaultCacheBehavior: "CachedMethods", must be one of: TargetOriginId, TrustedSigners, TrustedKeyGroups, ViewerProtocolPolicy, AllowedMethods, SmoothStreaming, Compress, LambdaFunctionAssociations, FunctionAssociations, FieldLevelEncryptionId, RealtimeLogConfigArn, CachePolicyId, OriginRequestPolicyId, ResponseHeadersPolicyId, GrpcConfig, ForwardedValues, MinTTL, DefaultTTL, MaxTTL
+
+=== retry: CachedMethods belongs inside AllowedMethods (first attempt failed CLI parameter validation; the OAC above was created and is reused)
+
+aws: [ERROR]: An error occurred (AccessDenied) when calling the CreateDistributionWithTags operation: Your account must be verified before you can add new CloudFront resources. To verify your account, please contact AWS Support (https://console.aws.amazon.com/support/home#/) and include this error message.
+
+=== cleanup: the distribution could not be created, so the unused OAC EMOQKNAYRSSXD was deleted Tue Sep 15 19:24:48 +06 2026
+None

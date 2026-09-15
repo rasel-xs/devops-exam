@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AnyoneMayReadObjectsUnderPublicPrefixOnlyNothingElse",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::abdur-notes-750069566598/public/*"
+    },
+    {
+      "Sid": "RefuseAnyRequestThatIsNotTls",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::abdur-notes-750069566598", "arn:aws:s3:::abdur-notes-750069566598/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    }
+  ]
+}

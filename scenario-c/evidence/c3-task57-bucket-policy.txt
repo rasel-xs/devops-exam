@@ -1,0 +1,53 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:26:17 +06 2026
+=== BEFORE: public access block
+{
+    "PublicAccessBlockConfiguration": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": true,
+        "RestrictPublicBuckets": true
+    }
+}
+=== change only the two POLICY blocks; the two ACL blocks stay on
+{
+    "PublicAccessBlockConfiguration": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": false,
+        "RestrictPublicBuckets": false
+    }
+}
+=== bucket policy: public/* readable by anyone; everything else private
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AnyoneMayReadObjectsUnderPublicPrefixOnlyNothingElse",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::abdur-notes-750069566598/public/*"
+        },
+        {
+            "Sid": "RefuseAnyRequestThatIsNotTls",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::abdur-notes-750069566598",
+                "arn:aws:s3:::abdur-notes-750069566598/*"
+            ],
+            "Condition": {
+                "Bool": {
+                    "aws:SecureTransport": "false"
+                }
+            }
+        }
+    ]
+}
+=== S3's own verdict
+{
+    "PolicyStatus": {
+        "IsPublic": true
+    }
+}

@@ -283,6 +283,7 @@ jobs:
           jq --arg img "${{ steps.copy.outputs.image }}" --arg acct "$ACCOUNT" '
                 .containerDefinitions[0].image = $img
               | .executionRoleArn |= sub("<ACCOUNT_ID>"; $acct)
+              | .taskRoleArn |= sub("<ACCOUNT_ID>"; $acct)
               | .containerDefinitions[0].secrets[].valueFrom |= sub("<ACCOUNT_ID>"; $acct)
              ' scenario-c/ecs/abdur-notes-api-taskdef.json > taskdef.json
           ARN=$(aws ecs register-task-definition --cli-input-json file://taskdef.json \

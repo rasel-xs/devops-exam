@@ -265,6 +265,9 @@ app.get('/api/stats', resolveTenant, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Scenario C3: presigned S3 upload/download URLs (src/attachments.js).
+app.use(require('./attachments').router(resolveTenant));
+
 // ---------------------------------------------------------------------------
 app.use((req, res) => res.status(404).json({ error: 'not found' }));
 

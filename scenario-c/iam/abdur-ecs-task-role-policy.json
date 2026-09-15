@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AppMayPutAndGetUnderTenantsAndPublicPrefixesOfItsOwnBucketOnly",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::abdur-notes-750069566598/tenants/*",
+        "arn:aws:s3:::abdur-notes-750069566598/public/*"
+      ]
+    }
+  ]
+}

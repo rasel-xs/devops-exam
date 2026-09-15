@@ -11,6 +11,7 @@
     "operatingSystemFamily": "LINUX"
   },
   "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/abdur-ecs-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/abdur-ecs-task-role",
   "containerDefinitions": [
     {
       "name": "notes-api",
@@ -35,6 +36,14 @@
         {
           "name": "DATABASE_URL",
           "value": "postgres://notes@abdur-notes-db.c9c4ku2mkinq.eu-north-1.rds.amazonaws.com:5432/notes?sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem"
+        },
+        {
+          "name": "S3_BUCKET",
+          "value": "abdur-notes-750069566598"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "eu-north-1"
         }
       ],
       "secrets": [
