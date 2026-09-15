@@ -1,0 +1,21 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:59:26 +06 2026
+=== 0. identity ===
+identity: arn:aws:iam::750069566598:user/rasel
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:59:28 +06 2026
+=== 1. Container Insights on abdur-exam-cluster -- so the running-task count is a graph, not a moment ===
+----------------------------------
+|      UpdateClusterSettings     |
++--------------------+-----------+
+|        name        |   value   |
++--------------------+-----------+
+|  containerInsights |  enabled  |
++--------------------+-----------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:59:29 +06 2026
+=== 2. scalable target: min 2, max 6 ===
+
+aws: [ERROR]: An error occurred (ValidationException) when calling the RegisterScalableTarget operation: The scalable target that you tried to tag already exists. To update tags on an existing scalable target, use the TagResource API.
+
+STOPPED: register-scalable-target failed

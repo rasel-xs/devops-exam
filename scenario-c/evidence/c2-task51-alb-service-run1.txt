@@ -1,0 +1,20 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:37:22 +06 2026
+=== 0. who and where -- must be rasel, account 750069566598, eu-north-1 ===
+identity: arn:aws:iam::750069566598:user/rasel
+region:   eu-north-1
+---------------------------------------------------------------------------------------
+|                               DescribeTaskDefinition                                |
++----------+--------------------------------------------------------------------------+
+|  family  |  abdur-notes-api                                                         |
+|  image   |  750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.69   |
+|  revision|  1                                                                       |
++----------+--------------------------------------------------------------------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:37:25 +06 2026
+=== 1. security groups -- app SG must accept 3000 from the ALB SG, and nothing else new ===
+rule 3000 <- sg-03082ef58d9f2db8a missing; adding it
+
+aws: [ERROR]: An error occurred (InvalidPermission.Duplicate) when calling the AuthorizeSecurityGroupIngress operation: the specified rule "peer: sg-03082ef58d9f2db8a, TCP, from port: 3000, to port: 3000, ALLOW" already exists
+
+STOPPED: could not add the 3000 rule

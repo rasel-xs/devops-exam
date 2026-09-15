@@ -1,0 +1,178 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:37:47 +06 2026
+=== 0. healthy baseline ===
+----------------------------------------
+|         DescribeTargetGroups         |
++---------+-----------+----------------+
+| matcher |   path    |     port       |
++---------+-----------+----------------+
+|  200    |  /readyz  |  traffic-port  |
++---------+-----------+----------------+
+02:37:48  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.44.13=healthy(None) 172.31.20.42=healthy(None) 
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:37:50 +06 2026
+=== 1. BREAK IT: health check path /readyz -> /readyz-typo ===
+---------------------------------------------
+|             ModifyTargetGroup             |
++---------+----------------+----------------+
+| matcher |     path       |     port       |
++---------+----------------+----------------+
+|  200    |  /readyz-typo  |  traffic-port  |
++---------+----------------+----------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:37:51 +06 2026
+=== 2. watch it fail, from the outside, for 4 minutes ===
+02:37:52  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.44.13=healthy(None) 172.31.20.42=healthy(None) 
+02:38:14  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.44.13=healthy(None) 172.31.20.42=healthy(None) 
+02:38:37  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.44.13=unhealthy(Target.ResponseCodeMismatch) 172.31.20.42=unhealthy(Target.ResponseCodeMismatch) 
+02:39:00  ALB /healthz=200  desired/running/pending=2/3/1  targets: 172.31.44.13=unhealthy(Target.ResponseCodeMismatch) 172.31.11.174=initial(Elb.RegistrationInProgress) 172.31.20.42=unhealthy(Target.ResponseCodeMismatch) 
+02:39:22  ALB /healthz=200  desired/running/pending=2/3/0  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.20.42=unhealthy(Target.ResponseCodeMismatch) 172.31.44.13=unhealthy(Target.ResponseCodeMismatch) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+02:39:45  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.20.42=draining(Target.DeregistrationInProgress) 172.31.44.13=draining(Target.DeregistrationInProgress) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+02:40:08  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.20.42=draining(Target.DeregistrationInProgress) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+02:40:31  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+02:40:53  ALB /healthz=200  desired/running/pending=2/2/1  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+02:41:16  ALB /healthz=200  desired/running/pending=2/2/2  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+02:41:39  ALB /healthz=200  desired/running/pending=2/3/0  targets: 172.31.11.174=unhealthy(Target.ResponseCodeMismatch) 172.31.41.254=unhealthy(Target.ResponseCodeMismatch) 172.31.29.156=unhealthy(Target.ResponseCodeMismatch) 172.31.44.113=unhealthy(Target.ResponseCodeMismatch) 
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:02 +06 2026
+=== CHECK 1. What does a user see? (the symptom, before any theory) ===
+  GET /healthz -> 200 in 0.402761s
+  GET /healthz -> 200 in 0.360597s
+  GET /healthz -> 200 in 0.376497s
+  GET /healthz -> 200 in 0.379127s
+  GET /healthz -> 200 in 0.396476s
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:04 +06 2026
+=== CHECK 2. What does ECS say? (service counts, then its own event log) ===
+desired/running/pending = 2/2/0
+2026-09-15T02:41:59.839000+06:00	(service abdur-notes-svc) has stopped 1 running tasks: (task db148391636d49f0b8249d4c69ee3ea5).
+2026-09-15T02:41:59.802000+06:00	(service abdur-notes-svc) (task db148391636d49f0b8249d4c69ee3ea5) (port 3000) is unhealthy in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453) due to (reason Health checks failed with these codes: [404]).
+2026-09-15T02:41:49.833000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:49.763000+06:00	(service abdur-notes-svc, taskSet ecs-svc/3802037375038676764) has begun draining connections on 1 tasks.
+2026-09-15T02:41:49.759000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:39.797000+06:00	(service abdur-notes-svc) has stopped 1 running tasks: (task f236043ab8224208bc23497e253fdeb6).
+2026-09-15T02:41:39.755000+06:00	(service abdur-notes-svc) (task f236043ab8224208bc23497e253fdeb6) (port 3000) is unhealthy in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453) due to (reason Health checks failed with these codes: [404]).
+2026-09-15T02:41:21.579000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:12.335000+06:00	(service abdur-notes-svc) has started 1 tasks: (task 4fcd20282c0d4231a03727d121f49f94). Amazon ECS replaced 1 tasks due to an unhealthy status.
+2026-09-15T02:40:53.356000+06:00	(service abdur-notes-svc) has started 1 tasks: (task 2089686b241f4c4c9b58c2f2061aad08). Amazon ECS replaced 1 tasks due to an unhealthy status.
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:07 +06 2026
+=== CHECK 3. What does the load balancer think of each target -- and WHY? ===
+---------------------------------------------------------------------------------------------------------------------------
+|                                                  DescribeTargetHealth                                                   |
++-----------------------------------------------+----------------+-------+-----------------------------------+------------+
+|                  description                  |      ip        | port  |              reason               |   state    |
++-----------------------------------------------+----------------+-------+-----------------------------------+------------+
+|  Health checks failed with these codes: [404] |  172.31.11.174 |  3000 |  Target.ResponseCodeMismatch      |  unhealthy |
+|  Health checks failed with these codes: [404] |  172.31.41.254 |  3000 |  Target.ResponseCodeMismatch      |  unhealthy |
+|  Health checks failed with these codes: [404] |  172.31.29.156 |  3000 |  Target.ResponseCodeMismatch      |  unhealthy |
+|  Target deregistration is in progress         |  172.31.44.113 |  3000 |  Target.DeregistrationInProgress  |  draining  |
++-----------------------------------------------+----------------+-------+-----------------------------------+------------+
+The Reason code decides where to look next:
+  Target.ResponseCodeMismatch -> the app ANSWERED, with the wrong code: health-check path/matcher, or the app itself
+  Target.Timeout              -> nothing answered: security group, wrong port, app not listening
+  Target.FailedHealthChecks   -> connection-level failure
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:08 +06 2026
+=== CHECK 4. The health check configuration -- is it asking the right question? ===
+-------------------------------
+|    DescribeTargetGroups     |
++------------+----------------+
+|  healthy   |  2             |
+|  interval  |  10            |
+|  matcher   |  200           |
+|  path      |  /readyz-typo  |
+|  port      |  traffic-port  |
+|  protocol  |  HTTP          |
+|  unhealthy |  2             |
++------------+----------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:09 +06 2026
+=== CHECK 5. Is the app itself alive? (ECS container health check runs INSIDE the task, on /healthz) ===
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+|                                                                                   DescribeTasks                                                                                   |
++-----------------+----------------+----------+-----------------------------------+-------------------------------------------------------------------------------------------------+
+| containerHealth |      ip        |  last    |              started              |                                              task                                               |
++-----------------+----------------+----------+-----------------------------------+-------------------------------------------------------------------------------------------------+
+|  HEALTHY        |  172.31.29.156 |  RUNNING |  2026-09-15T02:41:29.385000+06:00 |  arn:aws:ecs:eu-north-1:750069566598:task/abdur-exam-cluster/2089686b241f4c4c9b58c2f2061aad08   |
+|  HEALTHY        |  172.31.41.254 |  RUNNING |  2026-09-15T02:41:35.526000+06:00 |  arn:aws:ecs:eu-north-1:750069566598:task/abdur-exam-cluster/4fcd20282c0d4231a03727d121f49f94   |
++-----------------+----------------+----------+-----------------------------------+-------------------------------------------------------------------------------------------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:11 +06 2026
+=== CHECK 6. What does the app answer on the path the ALB is probing, versus the right one? ===
+  GET /readyz-typo  -> {"error":"not found"}  [HTTP 404]
+  GET /readyz       -> {"status":"ready","version":"v1.0.69"}  [HTTP 200]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:12 +06 2026
+=== CHECK 7. Network, only to rule it out: does the app SG still admit the ALB on 3000? ===
+[
+    {
+        "port": 3000,
+        "fromSg": [
+            "sg-03082ef58d9f2db8a"
+        ]
+    }
+]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:13 +06 2026
+=== 3. FIX: health check path back to /readyz ===
+----------------------------------------
+|           ModifyTargetGroup          |
++---------+-----------+----------------+
+| matcher |   path    |     port       |
++---------+-----------+----------------+
+|  200    |  /readyz  |  traffic-port  |
++---------+-----------+----------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:14 +06 2026
+=== 4. watch it recover -- until every target is healthy and the service is steady ===
+02:42:15  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.11.174=draining(Target.DeregistrationInProgress) 172.31.41.254=unhealthy(Target.ResponseCodeMismatch) 172.31.29.156=unhealthy(Target.ResponseCodeMismatch) 172.31.44.113=draining(Target.DeregistrationInProgress) 
+02:42:34  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.41.254=unhealthy(Target.ResponseCodeMismatch) 172.31.29.156=healthy(None) 172.31.11.174=draining(Target.DeregistrationInProgress) 
+02:42:54  ALB /healthz=200  desired/running/pending=2/2/0  targets: 172.31.41.254=healthy(None) 172.31.29.156=healthy(None) 
+recovered 44 s after the fix
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:42:59 +06 2026
+=== 5. fixed state ===
+------------------------------
+|    DescribeTargetHealth    |
++----------------+-----------+
+|       ip       |   state   |
++----------------+-----------+
+|  172.31.41.254 |  healthy  |
+|  172.31.29.156 |  healthy  |
++----------------+-----------+
+request 1  {"status":"ok","version":"v1.0.69","host":"ip-172-31-41-254.eu-north-1.compute.internal"}
+request 2  {"status":"ok","version":"v1.0.69","host":"ip-172-31-29-156.eu-north-1.compute.internal"}
+request 3  {"status":"ok","version":"v1.0.69","host":"ip-172-31-41-254.eu-north-1.compute.internal"}
+request 4  {"status":"ok","version":"v1.0.69","host":"ip-172-31-29-156.eu-north-1.compute.internal"}
+request 5  {"status":"ok","version":"v1.0.69","host":"ip-172-31-41-254.eu-north-1.compute.internal"}
+request 6  {"status":"ok","version":"v1.0.69","host":"ip-172-31-41-254.eu-north-1.compute.internal"}
+--- service events since the break (newest first)
+2026-09-15T02:42:47.352000+06:00	(service abdur-notes-svc) has reached a steady state.
+2026-09-15T02:42:09.786000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:42:09.721000+06:00	(service abdur-notes-svc, taskSet ecs-svc/3802037375038676764) has begun draining connections on 1 tasks.
+2026-09-15T02:42:09.717000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:59.839000+06:00	(service abdur-notes-svc) has stopped 1 running tasks: (task db148391636d49f0b8249d4c69ee3ea5).
+2026-09-15T02:41:59.802000+06:00	(service abdur-notes-svc) (task db148391636d49f0b8249d4c69ee3ea5) (port 3000) is unhealthy in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453) due to (reason Health checks failed with these codes: [404]).
+2026-09-15T02:41:49.833000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:49.763000+06:00	(service abdur-notes-svc, taskSet ecs-svc/3802037375038676764) has begun draining connections on 1 tasks.
+2026-09-15T02:41:49.759000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:39.797000+06:00	(service abdur-notes-svc) has stopped 1 running tasks: (task f236043ab8224208bc23497e253fdeb6).
+2026-09-15T02:41:39.755000+06:00	(service abdur-notes-svc) (task f236043ab8224208bc23497e253fdeb6) (port 3000) is unhealthy in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453) due to (reason Health checks failed with these codes: [404]).
+2026-09-15T02:41:21.579000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:41:12.335000+06:00	(service abdur-notes-svc) has started 1 tasks: (task 4fcd20282c0d4231a03727d121f49f94). Amazon ECS replaced 1 tasks due to an unhealthy status.
+2026-09-15T02:40:53.356000+06:00	(service abdur-notes-svc) has started 1 tasks: (task 2089686b241f4c4c9b58c2f2061aad08). Amazon ECS replaced 1 tasks due to an unhealthy status.
+2026-09-15T02:39:45.825000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:39:45.766000+06:00	(service abdur-notes-svc, taskSet ecs-svc/3802037375038676764) has begun draining connections on 1 tasks.
+2026-09-15T02:39:45.739000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:39:35.636000+06:00	(service abdur-notes-svc) has stopped 1 running tasks: (task de02599ad47841afa29dad67aec813bd).
+2026-09-15T02:39:35.606000+06:00	(service abdur-notes-svc) (task de02599ad47841afa29dad67aec813bd) (port 3000) is unhealthy in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453) due to (reason Health checks failed with these codes: [404]).
+2026-09-15T02:39:26.433000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:39:26.377000+06:00	(service abdur-notes-svc, taskSet ecs-svc/3802037375038676764) has begun draining connections on 1 tasks.
+2026-09-15T02:39:26.373000+06:00	(service abdur-notes-svc) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T02:39:16.884000+06:00	(service abdur-notes-svc) has stopped 1 running tasks: (task 502cbb9cb5a247419b70bf6709fa95ac).
+2026-09-15T02:39:16.847000+06:00	(service abdur-notes-svc) (task 502cbb9cb5a247419b70bf6709fa95ac) (port 3000) is unhealthy in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453) due to (reason Health checks failed with these codes: [404]).
+2026-09-15T02:38:58.116000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 02:43:04 +06 2026
+=== done ===

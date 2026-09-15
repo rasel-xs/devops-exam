@@ -1,0 +1,159 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:51:05 +06 2026
+=== 0. identity ===
+identity: arn:aws:iam::750069566598:user/rasel
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:51:06 +06 2026
+=== 1. Container Insights on abdur-exam-cluster -- so the running-task count is a graph, not a moment ===
+----------------------------------
+|      UpdateClusterSettings     |
++--------------------+-----------+
+|        name        |   value   |
++--------------------+-----------+
+|  containerInsights |  enabled  |
++--------------------+-----------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:51:07 +06 2026
+=== 2. scalable target: min 2, max 6 ===
+-------------------------------------------------------------
+|                  DescribeScalableTargets                  |
++-----------+-----------------------------------------------+
+|  dimension|  ecs:service:DesiredCount                     |
+|  max      |  6                                            |
+|  min      |  2                                            |
+|  resource |  service/abdur-exam-cluster/abdur-notes-svc   |
++-----------+-----------------------------------------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:51:10 +06 2026
+=== 3. one target-tracking policy: ECSServiceAverageCPUUtilization = 50 % ===
+{
+    "PolicyARN": "arn:aws:autoscaling:eu-north-1:750069566598:scalingPolicy:273801df-6c45-4ae1-b331-56d956b38dad:resource/ecs/service/abdur-exam-cluster/abdur-notes-svc:policyName/abdur-notes-cpu50",
+    "Alarms": [
+        {
+            "AlarmName": "TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmHigh-a62de06d-d729-43a5-b48a-bdb42afad261",
+            "AlarmARN": "arn:aws:cloudwatch:eu-north-1:750069566598:alarm:TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmHigh-a62de06d-d729-43a5-b48a-bdb42afad261"
+        },
+        {
+            "AlarmName": "TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmLow-6f26fb6f-97ed-4e5b-a3ed-63c2d392a3d9",
+            "AlarmARN": "arn:aws:cloudwatch:eu-north-1:750069566598:alarm:TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmLow-6f26fb6f-97ed-4e5b-a3ed-63c2d392a3d9"
+        }
+    ]
+}
+{
+    "name": "abdur-notes-cpu50",
+    "type": "TargetTrackingScaling",
+    "config": {
+        "TargetValue": 50.0,
+        "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ECSServiceAverageCPUUtilization"
+        },
+        "ScaleOutCooldown": 60,
+        "ScaleInCooldown": 120,
+        "DisableScaleIn": false
+    },
+    "alarms": [
+        "TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmHigh-a62de06d-d729-43a5-b48a-bdb42afad261",
+        "TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmLow-6f26fb6f-97ed-4e5b-a3ed-63c2d392a3d9"
+    ]
+}
+--- the two alarms target tracking created for it
+[
+    {
+        "name": "TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmHigh-a62de06d-d729-43a5-b48a-bdb42afad261",
+        "metric": "CPUUtilization",
+        "op": "GreaterThanThreshold",
+        "threshold": 50.0,
+        "period": 60,
+        "evaluationPeriods": 3,
+        "datapoints": null,
+        "state": "INSUFFICIENT_DATA"
+    },
+    {
+        "name": "TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmLow-6f26fb6f-97ed-4e5b-a3ed-63c2d392a3d9",
+        "metric": "CPUUtilization",
+        "op": "LessThanThreshold",
+        "threshold": 45.0,
+        "period": 60,
+        "evaluationPeriods": 15,
+        "datapoints": null,
+        "state": "INSUFFICIENT_DATA"
+    }
+]
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:51:14 +06 2026
+=== 4. baseline before load ===
+01:51:16  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:49:00+06:00 3.0900291999181113  alarms: high=INSUFFICIENT_DATA low=INSUFFICIENT_DATA 
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:51:17 +06 2026
+=== 5. LOAD: hey -z 5m -c 50 against /api/search (tenant acme) ===
+load started 01:51:17
+01:51:20  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:49:00+06:00 3.0900291999181113  alarms: high=INSUFFICIENT_DATA low=INSUFFICIENT_DATA 
+01:51:53  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:50:00+06:00 3.122643788655599  alarms: high=INSUFFICIENT_DATA low=INSUFFICIENT_DATA 
+01:52:27  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:50:00+06:00 3.122643788655599  alarms: high=OK low=INSUFFICIENT_DATA 
+01:53:01  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:51:00+06:00 32.72708010673523  alarms: high=OK low=INSUFFICIENT_DATA 
+01:53:35  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:51:00+06:00 32.72708010673523  alarms: high=OK low=INSUFFICIENT_DATA 
+01:54:09  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:52:00+06:00 39.67242781321208  alarms: high=OK low=INSUFFICIENT_DATA 
+01:54:42  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:53:00+06:00 40.479644775390625  alarms: high=OK low=INSUFFICIENT_DATA 
+01:55:16  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:53:00+06:00 40.479644775390625  alarms: high=OK low=INSUFFICIENT_DATA 
+01:55:49  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:54:00+06:00 40.2402270634969  alarms: high=OK low=INSUFFICIENT_DATA 
+load ended 01:56:20 after 5 min
+--- hey summary
+
+Summary:
+  Total:	300.8806 secs
+  Slowest:	3.7412 secs
+  Fastest:	0.1855 secs
+  Average:	0.2341 secs
+  Requests/sec:	213.0845
+  
+  Total data:	553038738 bytes
+  Size/request:	8626 bytes
+
+Response time histogram:
+  0.185 [1]	|
+  0.541 [62332]	|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.897 [1184]	|■
+  1.252 [412]	|
+  1.608 [119]	|
+  1.963 [42]	|
+  2.319 [7]	|
+  2.674 [7]	|
+  3.030 [2]	|
+  3.386 [2]	|
+  3.741 [5]	|
+
+
+Latency distribution:
+Status code distribution:
+  [200]	64113 responses
+
+
+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:56:20 +06 2026
+=== 6. after the load -- wait for scale-in back to 2 (target tracking is slow here on purpose) ===
+01:56:23  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:54:00+06:00 40.2402270634969  alarms: high=OK low=INSUFFICIENT_DATA 
+01:57:30  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:55:00+06:00 42.301300366719566  alarms: high=OK low=INSUFFICIENT_DATA 
+01:58:36  desired/running/pending=2/2/0    cpu(last 1-min avg @ time)=2026-09-15T01:56:00+06:00 22.91837239265442  alarms: high=OK low=INSUFFICIENT_DATA 
+back to 2 at 01:58:43, 2 min after the load stopped
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:58:43 +06 2026
+=== 7. the record -- scaling activities (newest first) ===
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:58:46 +06 2026
+=== service events (newest first) ===
+2026-09-15T01:42:35.422000+06:00	(service abdur-notes-svc) has reached a steady state.
+2026-09-15T01:42:35.421000+06:00	(service abdur-notes-svc) (deployment ecs-svc/3802037375038676764) deployment completed.
+2026-09-15T01:42:06.040000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T01:41:44.943000+06:00	(service abdur-notes-svc) has started 1 tasks: (task de02599ad47841afa29dad67aec813bd).
+2026-09-15T01:41:33.751000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T01:41:14.347000+06:00	(service abdur-notes-svc) has started 1 tasks: (task 502cbb9cb5a247419b70bf6709fa95ac).
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:58:47 +06 2026
+=== alarm history (state changes) ===
+--- TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmHigh-a62de06d-d729-43a5-b48a-bdb42afad261
+2026-09-15T01:51:53.568000+06:00	Alarm updated from INSUFFICIENT_DATA to OK
+--- TargetTracking-service/abdur-exam-cluster/abdur-notes-svc-AlarmLow-6f26fb6f-97ed-4e5b-a3ed-63c2d392a3d9
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:58:50 +06 2026
+=== done ===

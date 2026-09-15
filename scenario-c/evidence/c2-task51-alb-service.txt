@@ -1,0 +1,166 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:38:22 +06 2026
+=== 0. who and where -- must be rasel, account 750069566598, eu-north-1 ===
+identity: arn:aws:iam::750069566598:user/rasel
+region:   eu-north-1
+---------------------------------------------------------------------------------------
+|                               DescribeTaskDefinition                                |
++----------+--------------------------------------------------------------------------+
+|  family  |  abdur-notes-api                                                         |
+|  image   |  750069566598.dkr.ecr.eu-north-1.amazonaws.com/abdur-notes-api:v1.0.69   |
+|  revision|  1                                                                       |
++----------+--------------------------------------------------------------------------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:38:24 +06 2026
+=== 1. security groups -- app SG must accept 3000 from the ALB SG, and nothing else new ===
+rule 3000 <- sg-03082ef58d9f2db8a already present
+[
+    {
+        "name": "abdur-notes-app-sg",
+        "vpc": "vpc-064521cd395a04e1c",
+        "tag": "root-vmi3536696-1788282556-1536d427",
+        "inbound": [
+            {
+                "port": 3000,
+                "fromCidr": [],
+                "fromSg": [
+                    "sg-03082ef58d9f2db8a"
+                ]
+            }
+        ]
+    },
+    {
+        "name": "abdur-notes-alb-sg",
+        "vpc": "vpc-064521cd395a04e1c",
+        "tag": "root-vmi3536696-1788282556-1536d427",
+        "inbound": [
+            {
+                "port": 80,
+                "fromCidr": [
+                    "0.0.0.0/0"
+                ],
+                "fromSg": []
+            }
+        ]
+    }
+]
+subnets: subnet-0e02473de8435f234	subnet-0893bd67af8aa3a7c	subnet-0160bae016ddd4ea6
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:38:29 +06 2026
+=== 2. target group abdur-notes-tg -- IP targets (Fargate awsvpc), readiness on /readyz ===
+created arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453
+---------------------------------
+|     DescribeTargetGroups      |
++------------+------------------+
+|  healthy   |  2               |
+|  interval  |  10              |
+|  matcher   |  200             |
+|  name      |  abdur-notes-tg  |
+|  path      |  /readyz         |
+|  port      |  3000            |
+|  timeout   |  5               |
+|  type      |  ip              |
+|  unhealthy |  2               |
++------------+------------------+
+---------------------------------------------------
+|          DescribeTargetGroupAttributes          |
++----------------------------------------+--------+
+|                   Key                  | Value  |
++----------------------------------------+--------+
+|  deregistration_delay.timeout_seconds  |  30    |
++----------------------------------------+--------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:38:34 +06 2026
+=== 3. load balancer abdur-notes-alb -- internet-facing, every default subnet, ALB SG only ===
+created arn:aws:elasticloadbalancing:eu-north-1:750069566598:loadbalancer/app/abdur-notes-alb/78ae405d9bb436f7
+waiting for the load balancer to become active (usually 2-4 minutes)...
+{
+    "name": "abdur-notes-alb",
+    "state": "active",
+    "scheme": "internet-facing",
+    "dns": "abdur-notes-alb-2056595441.eu-north-1.elb.amazonaws.com",
+    "azs": [
+        "eu-north-1b",
+        "eu-north-1c",
+        "eu-north-1a"
+    ],
+    "sg": [
+        "sg-03082ef58d9f2db8a"
+    ]
+}
+created listener HTTP:80 -> abdur-notes-tg
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:40:59 +06 2026
+=== 4. service abdur-notes-svc -- 2 Fargate tasks registered into abdur-notes-tg ===
+arn:aws:ecs:eu-north-1:750069566598:service/abdur-exam-cluster/abdur-notes-svc
+waiting for the service to be stable (tasks running, targets healthy; up to 10 minutes)...
+{
+    "service": "abdur-notes-svc",
+    "status": "ACTIVE",
+    "taskDefinition": "arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:1",
+    "desired": 2,
+    "running": 2,
+    "pending": 0,
+    "launchType": "FARGATE",
+    "grace": 30,
+    "circuitBreaker": {
+        "enable": true,
+        "rollback": true,
+        "resetOnHealthyTask": true,
+        "thresholdConfiguration": {
+            "type": "BOUNDED_PERCENT",
+            "value": 50
+        }
+    },
+    "targetGroup": "arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453",
+    "publicIp": "ENABLED"
+}
+--- last service events
+2026-09-15T01:42:06.040000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T01:41:44.943000+06:00	(service abdur-notes-svc) has started 1 tasks: (task de02599ad47841afa29dad67aec813bd).
+2026-09-15T01:41:33.751000+06:00	(service abdur-notes-svc) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-north-1:750069566598:targetgroup/abdur-notes-tg/36b0857b43350453)
+2026-09-15T01:41:14.347000+06:00	(service abdur-notes-svc) has started 1 tasks: (task 502cbb9cb5a247419b70bf6709fa95ac).
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:42:24 +06 2026
+=== 5. which task is which -- task id, private IP, health ===
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+|                                                                                                         DescribeTasks                                                                                                        |
++-------------+----------+----------+---------------+-------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+|     az      | health   |  last    |   privateIp   |                                revision                                 |                                             task                                               |
++-------------+----------+----------+---------------+-------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+|  eu-north-1b|  HEALTHY |  RUNNING |  172.31.44.13 |  arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:1  |  arn:aws:ecs:eu-north-1:750069566598:task/abdur-exam-cluster/502cbb9cb5a247419b70bf6709fa95ac  |
+|  eu-north-1a|  UNKNOWN |  RUNNING |  172.31.20.42 |  arn:aws:ecs:eu-north-1:750069566598:task-definition/abdur-notes-api:1  |  arn:aws:ecs:eu-north-1:750069566598:task/abdur-exam-cluster/de02599ad47841afa29dad67aec813bd  |
++-------------+----------+----------+---------------+-------------------------------------------------------------------------+------------------------------------------------------------------------------------------------+
+--- the same IPs as the load balancer sees them
+--------------------------------------------------------------
+|                    DescribeTargetHealth                    |
++--------------+----------------+-------+---------+----------+
+|      az      |      ip        | port  | reason  |  state   |
++--------------+----------------+-------+---------+----------+
+|  eu-north-1b |  172.31.44.13  |  3000 |  None   |  healthy |
+|  eu-north-1a |  172.31.20.42  |  3000 |  None   |  healthy |
++--------------+----------------+-------+---------+----------+
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:42:27 +06 2026
+=== 6. THE DELIVERABLE -- repeated requests through the ALB reach different tasks ===
+ALB: http://abdur-notes-alb-2056595441.eu-north-1.elb.amazonaws.com
+request 01  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 02  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 03  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+request 04  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+request 05  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 06  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 07  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+request 08  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+request 09  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 10  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+request 11  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 12  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+
+--- responses per task
+   6 ip-172-31-20-42.eu-north-1.compute.internal
+   6 ip-172-31-44-13.eu-north-1.compute.internal
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:42:33 +06 2026
+=== 2 different tasks served 12 requests through one ALB DNS name ===
+ALB DNS name: abdur-notes-alb-2056595441.eu-north-1.elb.amazonaws.com

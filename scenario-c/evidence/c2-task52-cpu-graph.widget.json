@@ -1,0 +1,11 @@
+{"title":"abdur-notes-svc CPUUtilization (Average, 1 min, UTC+6) | EXAM_TOKEN root-vmi3536696-1788282556-1536d427",
+ "view":"timeSeries","stacked":false,"region":"eu-north-1","stat":"Average","period":60,
+ "start":"2026-09-14T19:40:00Z","end":"2026-09-14T20:50:00Z","timezone":"+0600",
+ "width":1400,"height":520,
+ "metrics":[["AWS/ECS","CPUUtilization","ClusterName","abdur-exam-cluster","ServiceName","abdur-notes-svc",{"label":"service CPU %"}],
+            ["AWS/RDS","CPUUtilization","DBInstanceIdentifier","abdur-notes-db",{"label":"RDS CPU % (for comparison)","color":"#7f7f7f"}]],
+ "yAxis":{"left":{"min":0,"max":60}},
+ "annotations":{"horizontal":[{"label":"target 50%","value":50,"color":"#d62728"}],
+   "vertical":[[{"label":"run 1: hey -c 50","value":"2026-09-14T19:51:17Z"},{"value":"2026-09-14T19:56:20Z"}],
+               [{"label":"run 3: hey -c 120","value":"2026-09-14T20:00:50Z"},{"value":"2026-09-14T20:06:11Z"}],
+               [{"label":"task 54 break","value":"2026-09-14T20:37:50Z"},{"value":"2026-09-14T20:42:13Z"}]]}}

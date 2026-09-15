@@ -1,0 +1,37 @@
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:47:06 +06 2026
+identity: arn:aws:iam::750069566598:user/rasel
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:47:12 +06 2026
+=== one-off task: node db/seed.js ===
+task: 35cdf254fe6b4050869119a44dd09ddd
+waiting for it to finish...
+{
+    "stoppedReason": "Essential container in task exited",
+    "exitCode": 0,
+    "started": "2026-09-15T01:47:26.929000+06:00",
+    "stopped": "2026-09-15T01:47:55.953000+06:00"
+}
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:48:01 +06 2026
+=== its log stream: notes-api/notes-api/35cdf254fe6b4050869119a44dd09ddd ===
+seeding...
+  acme      30000 notes
+  globex    8000 notes
+  initech   6000 notes
+  umbrella  4000 notes
+  hooli     2000 notes
+  150000 tags
+┌─────────┬────────────┬─────────┬─────────┐
+│ (index) │ slug       │ notes   │ tags    │
+├─────────┼────────────┼─────────┼─────────┤
+│ 0       │ 'acme'     │ '30000' │ '90085' │
+│ 1       │ 'globex'   │ '8000'  │ '23980' │
+│ 2       │ 'initech'  │ '6000'  │ '17885' │
+│ 3       │ 'umbrella' │ '4000'  │ '11948' │
+│ 4       │ 'hooli'    │ '2000'  │ '6102'  │
+└─────────┴────────────┴─────────┴─────────┘
+done in 3.0s
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 01:48:03 +06 2026
+=== seed finished, exit code 0 ===

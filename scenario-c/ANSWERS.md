@@ -88,6 +88,24 @@ whoever administers it, and was already exceeded by spend that predates me.
 tasks, so about **$1/day** while C2 is standing up. Everything is deleted in
 task 63 and the listing proves it.
 
+### 4. CloudShell was unavailable, so C2 onwards runs from the AWS CLI on my laptop
+
+Tasks 47–50 were done in the console. For task 51 I moved to scripts, so every
+step is repeatable and its output is evidence rather than a screenshot of a
+form. **AWS CloudShell refused to start** in this account: *"Unable to create
+the environment. Your account verification is in progress"* — an account-level
+state only the account owner can resolve, not an IAM permission. Deleting the
+environment and retrying gave the same result.
+
+So AWS CLI v2.36.44 was installed on my laptop (into my home directory, no
+`sudo`; removed in task 63), and authenticated with **`aws login`**: it signs in
+through the browser with the same console user and gives the CLI short-lived
+credentials. **No access key was created for `rasel`.** The obvious alternative
+— an access key on the exam VPS, where AWS CLI is already installed — was
+rejected: every student there is root, and `rasel` is close to an
+administrator in a shared account. Every script checks that the caller is
+`arn:aws:iam::750069566598:user/rasel` before doing anything.
+
 ---
 
 ## C1 — IAM basics (8 marks)
@@ -434,7 +452,7 @@ That is why task 47 is proven by a real push and task 48 by the simulator, and
 why neither replaces the other: the simulator is fast, safe and exhaustive about
 the policy; only the real call is evidence about the operation.
 
-<!-- status: DONE except scope screenshot -->
+<!-- status: DONE -->
 
 ---
 
@@ -491,7 +509,7 @@ source image: ghcr.io/rasel-xs/notes-api:v1.0.69
 v1.0.69: digest: sha256:e11a0591643dc874a5f5e0464504afb584b32fc17f420d76687256d6bf059bdf size: 2187
 ```
 
-Screenshot with tag and size: `evidence/c2-task49-ecr-image.png`.
+Screenshot with tag, size and digest, taken with the VPS terminal showing the exam token alongside (`root-vmi3536696-1788282556-1536d427 | Mon Sep 14 22:11:47 CEST 2026`): `evidence/c2-task49-ecr-image.png`.
 
 ```
 Image tags  v1.0.69
@@ -532,7 +550,7 @@ manifest (`sha256:e11a0591…`) could be pushed. Two consequences:
    "names one image": it names one image *per registry*, and a digest is the only
    identifier that survives being copied between them.
 
-<!-- status: DONE (pending console screenshot) -->
+<!-- status: DONE -->
 
 ### Task 50 (8 marks) — Task definition
 
@@ -624,7 +642,9 @@ Task `170d12b3c1534ffeaa71aa9b19917367`, log stream
 `notes-api/notes-api/170d12b3c1534ffeaa71aa9b19917367`
 (`evidence/c2-task50-cloudwatch-logs.png`, `evidence/c2-task50-running-task.png`;
 `evidence/c2-task50-task-provisioning.png` is the same task at launch, 00:16
-`PROVISIONING` / health `UNKNOWN`, seven minutes before `RUNNING` / `HEALTHY`):
+`PROVISIONING` / health `UNKNOWN`; the running screenshot was taken at 00:23. The
+task did not take seven minutes to start — its lifecycle shows the image pull
+took 2 seconds and `RUNNING` was reached within the same minute, 00:16):
 
 ```
 2026-09-14T18:16:42.439Z  migrations applied
@@ -642,6 +662,23 @@ the command is `sh -c "… && node src/server.js"`: busybox `sh` exec-replaces
 itself for the last command of a list (B2 task 28), so when ECS stops the task
 its SIGTERM reaches Node's graceful-shutdown handler directly (B4 task 40).
 
+#### And it stopped cleanly
+
+The standalone task was stopped from the console once task 51's service was
+about to replace it (`evidence/c2-task50-stopped-exit-0.png`). Its lifecycle:
+running **21 min 48 s**, then stopped, container **exit code 0**.
+
+The exit code is the proof that the claim above holds on ECS. ECS sends SIGTERM,
+waits `stopTimeout` (30 s by default), then sends SIGKILL; a killed container
+exits **137** (128 + 9). Exit 0 means Node received SIGTERM, closed its server
+and exited on its own.
+
+The lifecycle's *Stopped — 35 seconds* is **not** how long the app took to shut
+down, and should not be read as "it hit the 30-second timeout". That phase also
+covers deprovisioning — detaching and deleting the task's network interface —
+which the app plays no part in. Had it been the timeout, the exit code would be
+137.
+
 #### Cost of the database
 
 The RDS console offered no free-tier template for this account, and estimated
@@ -650,7 +687,7 @@ tasks 50–54 and is deleted in task 63. Deleted, not stopped: a stopped RDS
 instance still bills for storage, and AWS starts it again automatically after
 seven days.
 
-<!-- status: DONE except the RUNNING/HEALTHY screenshot -->
+<!-- status: DONE -->
 
 ### Task 51 (8 marks) — Service behind a load balancer
 
@@ -658,7 +695,122 @@ Deliverable: repeated requests to the ALB showing responses from **different
 tasks** — a different container IP or hostname in each response, visible in the
 screenshot.
 
-<!-- status: not started -->
+**Result: 12 requests to one ALB DNS name, answered 6 and 6 by two different
+Fargate tasks** (`evidence/c2-task51-alb-service.txt`, screenshot
+`evidence/c2-task51-different-tasks.png`):
+
+```
+ALB: http://abdur-notes-alb-2056595441.eu-north-1.elb.amazonaws.com
+request 01  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 02  {"status":"ok","version":"v1.0.69","host":"ip-172-31-20-42.eu-north-1.compute.internal"}
+request 03  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+...
+request 12  {"status":"ok","version":"v1.0.69","host":"ip-172-31-44-13.eu-north-1.compute.internal"}
+
+--- responses per task
+   6 ip-172-31-20-42.eu-north-1.compute.internal
+   6 ip-172-31-44-13.eu-north-1.compute.internal
+```
+
+`host` is `os.hostname()`, which on Fargate is the task's private DNS name. The
+same run lists the service's tasks and the target group's view of them, so each
+hostname can be tied to a task ID rather than taken on trust:
+
+| Task | AZ | Private IP = hostname | ECS container health | ALB target |
+| --- | --- | --- | --- | --- |
+| `502cbb9cb5a247419b70bf6709fa95ac` | eu-north-1b | `172.31.44.13` | HEALTHY | healthy |
+| `de02599ad47841afa29dad67aec813bd` | eu-north-1a | `172.31.20.42` | UNKNOWN | healthy |
+
+The second task's container health was still `UNKNOWN` while its ALB target
+was already `healthy`. That is not a contradiction: the two checks are separate
+(see below). The container check has a 15 s start period and had not reported
+yet; the ALB check only needs two passes 10 s apart.
+
+Everything was created by [`c2-task51-alb-service.sh`](c2-task51-alb-service.sh),
+run from my laptop (*Constraints* §4). The service went from created to stable
+in about 70 seconds: tasks started 01:41:14 and 01:41:44, registered as targets
+01:41:33 and 01:42:06, service stable before 01:42:24.
+
+#### What was built
+
+```
+internet ──80──▶ ALB  abdur-notes-alb ──3000──▶ tasks  abdur-notes-svc ──5432──▶ RDS abdur-notes-db
+                 sg abdur-notes-alb-sg          sg abdur-notes-app-sg           sg abdur-notes-db-sg
+                 in: 80 from 0.0.0.0/0          in: 3000 from alb-sg ONLY        in: 5432 from app-sg ONLY
+```
+
+Each security group admits only the one before it, **by security-group ID, not
+by address**. ALB node IPs change without notice, so an IP rule would break;
+and "from `sg-03082ef58d9f2db8a`" means "from any network interface that is a
+member of the ALB's group", which is exactly the claim. The tasks have public IPs
+(no NAT gateway — task 50), but `abdur-notes-app-sg` accepts nothing except the
+ALB, so the internet cannot reach a task directly and go around the load
+balancer. Before this task the app group had **zero** inbound rules.
+
+| Resource | Setting | Why |
+| --- | --- | --- |
+| Target group `abdur-notes-tg` | target type **`ip`** | Fargate `awsvpc` tasks have their own ENI and IP; there is no EC2 instance to register |
+| | health check **`/readyz`**, HTTP 200 | readiness: it queries the database |
+| | interval 10 s, timeout 5 s, healthy 2, unhealthy 2 | a bad task leaves rotation in ~20 s, a new one joins in ~20 s |
+| | deregistration delay **30 s** (default 300) | the app's requests take milliseconds and it drains on SIGTERM (task 50); 300 s would add five minutes to every deploy and scale-in, per task |
+| ALB `abdur-notes-alb` | internet-facing, all three default subnets (eu-north-1a/b/c) | an ALB needs at least two AZs; tasks may land in any of the three |
+| Listener | HTTP :80 → forward to `abdur-notes-tg` | no TLS required by the brief |
+| Service `abdur-notes-svc` | desired 2, `FARGATE`, task definition `abdur-notes-api:1` | |
+| | same three subnets, `abdur-notes-app-sg`, public IP on | as task 50 |
+| | health-check grace period **30 s** | migrations run before the server listens; ALB failures in the first 30 s are ignored. Longer only delays replacing a genuinely broken task |
+| | deployment circuit breaker **with rollback** | a revision whose tasks keep failing is rolled back to the last working one (AWS's default threshold here: `BOUNDED_PERCENT` 50) |
+| | min healthy 100 %, max 200 % | during a deploy new tasks start before old ones stop, so capacity never drops below 2 |
+
+#### Two health checks, two different jobs
+
+| | Container health check (task definition) | ALB target health check |
+| --- | --- | --- |
+| Path | `/healthz` — never touches the DB | `/readyz` — pings the DB |
+| Question | is the process alive? | should this task get traffic? |
+| On failure | ECS **kills and replaces** the task | ALB **stops sending** requests; the task lives |
+
+If the database has a bad minute, `/readyz` fails on every task and the ALB
+returns 503s — but nothing is killed, and traffic resumes the moment the database
+does. Put `/readyz` in the container check instead and the same database blip
+would make ECS restart every task at once, turning a database problem into an
+application outage and a thundering herd of reconnecting tasks.
+
+#### Why the split is 6/6 and not "mostly one"
+
+In B4 (task 36), Swarm's routing mesh balanced **per connection**, so a client
+reusing one keep-alive connection saw one replica every time. An ALB is a layer-7
+proxy that routes **per request**, round-robin by default, regardless of client
+connections. Each `curl` here was a separate process. The result alternates
+mostly in pairs rather than strictly; the likely reason (not verified) is that
+the DNS name resolves to ALB nodes in several AZs and each node keeps its own
+round-robin position, so consecutive requests landing on different nodes can
+repeat a target.
+
+#### Two tasks running migrations at the same moment
+
+Both tasks run `node db/migrate.js` on start. Every statement in `schema.sql` is
+`IF NOT EXISTS` and the tables already existed from task 50, so both were
+no-ops. On an empty database, two concurrent `CREATE TABLE IF NOT EXISTS` can
+still collide on Postgres's catalog (`pg_type` unique violation); the migration
+script's 2-second retry loop would absorb it, but a real system would run
+migrations once, as a separate one-off task before the deploy. Noted rather than
+fixed, because it did not occur here.
+
+#### Run 1 stopped — correctly
+
+Run 1 (`evidence/c2-task51-alb-service-run1.txt`) stopped at step 1 with
+`InvalidPermission.Duplicate`. The port-3000 rule had already been added in the
+console, but the script's existence check was wrong:
+`IpPermissions[?…].UserIdGroupPairs[?GroupId==x][] | length(@)` filters each
+rule's list separately and counts the wrong level, returning 0. The fix is to
+flatten first, then filter, then count:
+`length(IpPermissions[?…].UserIdGroupPairs[] | [?GroupId==x])`. Because every
+step checks its result, the script stopped instead of carrying on with a
+half-known state. Run 2 reported the rule as already present and created
+everything else.
+
+<!-- status: DONE except the screenshot c2-task51-different-tasks.png -->
+
 
 ### Task 52 (6 marks) — Autoscaling
 
@@ -677,7 +829,161 @@ actually serving traffic? Add up the CloudWatch metric delay, the alarm
 evaluation period, task startup and health checks passing. Why does that mean
 autoscaling cannot save you from a sudden spike?
 
-<!-- status: not started -->
+**Result: it scaled 2 → 3 while under load and back to 2 afterwards — and the
+new task arrived after the load had already stopped.** That last fact is the
+answer to the question, measured rather than estimated.
+
+Script [`c2-task52-autoscaling.sh`](c2-task52-autoscaling.sh); transcript of the
+run that scaled `evidence/c2-task52-autoscaling.txt`. Screenshots:
+`evidence/c2-task52-cpu-graph.png` (service CPU, both load runs),
+`evidence/c2-task52-task-count.png` (Container Insights `RunningTaskCount`),
+`evidence/c2-task52-events.png` (*Deployments and events*).
+The two graphs are **rendered by CloudWatch itself** with
+`aws cloudwatch get-metric-widget-image`, for the fixed window 01:40–02:50 (+06),
+from the widget definitions saved beside them
+(`evidence/c2-task52-cpu-graph.widget.json`, `…task-count.widget.json`). The
+exam token is in each graph's title, and the load runs and the task 54 break are
+shaded from the script's own timestamps. They replace console screenshots that
+had to be retaken the next day, when the console's relative time range no longer
+reached back to the test. The CPU graph also plots RDS CPU for comparison.
+
+#### The policy
+
+```json
+{
+  "PolicyName": "abdur-notes-cpu50",
+  "PolicyType": "TargetTrackingScaling",
+  "ScalableTarget": { "ResourceId": "service/abdur-exam-cluster/abdur-notes-svc",
+                      "ScalableDimension": "ecs:service:DesiredCount",
+                      "MinCapacity": 2, "MaxCapacity": 6 },
+  "TargetTrackingScalingPolicyConfiguration": {
+    "TargetValue": 50.0,
+    "PredefinedMetricSpecification": { "PredefinedMetricType": "ECSServiceAverageCPUUtilization" },
+    "ScaleOutCooldown": 60,
+    "ScaleInCooldown": 120,
+    "DisableScaleIn": false
+  }
+}
+```
+
+Target tracking created, and owns, two CloudWatch alarms:
+
+| Alarm | Condition | Evaluation |
+| --- | --- | --- |
+| `…-AlarmHigh-…` | `CPUUtilization > 50` | 3 consecutive 1-minute periods |
+| `…-AlarmLow-…` | `CPUUtilization < 45` (90 % of target) | **15** consecutive 1-minute periods |
+
+The cooldowns are shortened from the 300 s defaults only to fit the
+demonstration in a session. They do not make scale-in fast — the 15-period low
+alarm does not change, and it dominates.
+
+`ECSServiceAverageCPUUtilization` is relative to the task's CPU **reservation**:
+50 % of a 256-unit (0.25 vCPU) task is 0.125 vCPU.
+
+Container Insights was switched on for `abdur-exam-cluster` just before the test,
+because plain `AWS/ECS` metrics have CPU and memory but no task count. It is
+switched off again in task 63.
+
+#### Three runs — two did not scale, for different reasons
+
+| Run | Load | Outcome |
+| --- | --- | --- |
+| 1 (`…-run1-c50.txt`) | the brief's `hey -z 5m -c 50`, 01:51–01:56 | **no scale-out.** CPU plateaued at **40 %**. 64,113 responses, all 200, **213 req/s** |
+| 2 (`…-run2-stopped.txt`) | — | stopped at setup: re-registering the existing scalable target *with tags* is a `ValidationException`. Script now registers only if absent |
+| 3 (`…autoscaling.txt`) | `hey -z 5m -c 120`, 02:00:50–02:06:11 | **scaled 2 → 3 → 2.** 81,309 responses, all 200, **270 req/s** |
+
+Run 1 was limited by **the client, not the service**. The fastest response in
+the whole run was 185 ms — that is the round trip from Dhaka to Stockholm — so
+50 workers can send at most ~50 / 0.234 s ≈ 213 requests per second however idle
+the tasks are, and 213 req/s cost the two tasks 40 % CPU. Raising concurrency
+raised the rate, not just the connection count, which is what moves CPU.
+
+**It was the app that was working, not the database.** RDS (`db.t3.micro`) CPU
+over the same minutes, from CloudWatch:
+
+```
+run 1  01:51-01:55   14.6  20.6  21.5  20.9  21.6
+run 3  02:01-02:05   24.5  26.2  25.0  24.9  25.2
+```
+
+`?q=abc` matches within the first few hundred rows of acme's notes, so
+`LIMIT 50` stops the "unindexed" scan early; the app's cost is serialising an
+8.6 KB JSON response 270 times a second. That matters for what this policy can
+and cannot fix — see the last section.
+
+#### Timeline of run 3 — from the transcript's alarm history, scaling activities and service events
+
+| Time (+06) | Event | Source |
+| --- | --- | --- |
+| 02:00:50 | load starts | script |
+| **02:01** | first 1-minute CPU datapoint over 50 % (50.70) | CloudWatch |
+| 02:02 – 02:05 | 50.42, 51.03, 50.57, 50.27 | CloudWatch |
+| 02:03:15 | newest datapoint visible is still **02:01** | script snapshot |
+| **02:06:29** | `AlarmHigh` OK → **ALARM**; scaling activity "Setting desired count to 3" | alarm history, scaling activities |
+| **02:06:11** | **load ends** — 18 seconds *before* the alarm | script |
+| 02:06:35 | service "has started 1 tasks: e22bffe3…" | service events |
+| 02:07:01 | "registered 1 targets" in `abdur-notes-tg` | service events |
+| **02:07:20** | "has reached a steady state" — target passed 2 health checks | service events |
+| 02:06 | CPU already back to 3.7 % | CloudWatch |
+
+#### Answer: how long from CPU high to a new task serving traffic
+
+**About 6 minutes 20 seconds** — 02:01:00 (start of the first high minute) to
+02:07:20 (new target healthy):
+
+| Component | Measured here | Why |
+| --- | --- | --- |
+| Metric delay | **~2 min** | the 02:01 datapoint was not yet visible at 02:03:15; ECS publishes one-minute service metrics with a lag |
+| Alarm evaluation | **3 min** | three consecutive one-minute periods over 50 % |
+| (unexplained) | ~1 min | the alarm fired at 02:06:29, a minute after three high datapoints existed. The values were barely over the line (50.3–51.0); my best guess, not verified, is that late-arriving samples revised a datapoint under 50 at an earlier evaluation |
+| Scaling activity → task started | **6 s** | 02:06:29 → 02:06:35 |
+| Task start → registered as target | **26 s** | Fargate ENI, image pull, `node db/migrate.js`, server listening |
+| Target → healthy | **~20 s** | healthy threshold 2 × 10 s interval |
+
+**Why autoscaling cannot save you from a sudden spike:** for six minutes the
+existing tasks carry the whole spike alone. A spike that saturates them does its
+damage — timeouts, 5xx, queues backing up — in seconds, long before the first
+new task exists. Here the extra task started 24 seconds after the load had
+already ended, and then ran idle for 17 minutes. Autoscaling follows a sustained
+trend; it does not absorb a burst. What does:
+
+- **enough headroom at minimum capacity** (min 2 is the real defence, not max 6);
+- **scheduled scaling** before known peaks;
+- **a faster signal** — `ALBRequestCountPerTarget` rather than CPU, and step
+  scaling with a lower evaluation count — which shortens, but cannot remove, the
+  delay;
+- **shedding load** — rate limiting per tenant, caching, clamping `?limit` —
+  and fixing the expensive query itself. None of those wait for a new task.
+
+And it scales the wrong thing if the database is the bottleneck: more app tasks
+send the database *more* concurrent queries, not fewer. Here RDS was at 25 %, so
+adding app capacity was right; with a real unindexed scan it would not be.
+
+#### Scale-in
+
+| Time (+06) | Event |
+| --- | --- |
+| 02:06 | CPU drops to ~3.5 % and stays there |
+| 02:23:58 | `AlarmLow` OK → **ALARM** (15 low periods, plus the same metric delay); "Setting desired count to 2" |
+| 02:24:01 | "has stopped 1 running tasks: e22bffe3…" |
+| 02:24:11 | "deregistered 1 targets", "begun draining connections" (30 s deregistration delay, task 51) |
+| 02:24:30 | scaling activity complete |
+
+**Scale-in took 18 minutes 19 seconds** from the load stopping (02:06:11) to the
+activity completing (02:24:30). That slowness is deliberate: removing capacity on
+a brief dip and adding it straight back ("flapping") is worse than paying for an
+idle task for a quarter of an hour.
+
+Two details in the transcript worth not misreading:
+
+- `AlarmLow` was already in `ALARM` at 02:01:58, before the load bit, because the
+  idle service sat at 3 % CPU. Nothing happened because the service was already
+  at its minimum of 2.
+- The alarm names differ between run 1 (`AlarmHigh-a62de06d…`) and run 3
+  (`AlarmHigh-7e9f39f5…`). `put-scaling-policy` on an existing policy replaces
+  its alarms rather than editing them.
+
+<!-- status: DONE -->
 
 ### Task 53 (8 marks) — Deploy from CI/CD
 
@@ -696,7 +1002,77 @@ Break one thing deliberately (wrong target-group port, or a health check path
 that 404s), then debug it and write down **the exact order of checks used**.
 Deliverables: that list, plus screenshots of the failure and the fixed state.
 
-<!-- status: not started -->
+**The break:** `abdur-notes-tg`'s health check path changed from `/readyz` to
+`/readyz-typo` — a path the app does not serve. Nothing else changed: not the
+app, the image, the task definition, the security groups. Script
+[`c2-task54-break-and-debug.sh`](c2-task54-break-and-debug.sh), transcript
+`evidence/c2-task54-break-and-debug.txt`; screenshots
+`evidence/c2-task54-failure-events.png` (ECS events during the failure) and
+`evidence/c2-task54-fixed-targets.png` (targets healthy after the fix).
+
+#### What actually happened — and why the obvious check said "fine"
+
+| Time (+06) | ALB `/healthz` from outside | ECS service | Targets |
+| --- | --- | --- | --- |
+| 02:37:50 | 200 | 2/2 | 2 healthy — **path changed** |
+| 02:38:37 | **200** | 2/2 | both `unhealthy (Target.ResponseCodeMismatch)` |
+| 02:39:00 | **200** | 2 desired / **3 running** / 1 pending | replacement starting before the old one stops |
+| 02:39:16 – 02:39:35 | **200** | both original tasks stopped: *"is unhealthy … Health checks failed with these codes: [404]"* | |
+| 02:40:53 – 02:41:12 | **200** | *"Amazon ECS replaced 1 tasks due to an unhealthy status"* — twice more | the replacements fail the same check |
+| 02:41:39 – 02:41:59 | **200** | the replacements' replacements stopped too | |
+| 02:42:13 | — | **fix applied** | |
+| 02:42:54 | 200 | 2/2 | both `healthy` — **44 s after the fix** |
+
+Four tasks were stopped in four minutes (`502cbb9c`, `de02599a`, then their
+replacements `f236043a`, `db148391`), and **every request from outside returned
+200 the whole time.** Two mechanisms explain that, and both matter:
+
+- **ALB fail-open.** When *every* target in a target group is unhealthy, an ALB
+  stops trusting the health check and routes to all of them anyway. The app was
+  fine, so users were served.
+- **ECS acted on the ALB's verdict.** A service attached to a target group
+  treats "unhealthy in the target group" as "replace the task", after the 30 s
+  grace period. So the replacement loop was real, continuous and invisible from
+  the front door — each new task pulling the image, running migrations against
+  RDS and being killed again ~40 s later. With a slower-starting app, or a
+  database near its connection limit, that loop is what turns into an outage.
+
+The lesson for the debug order: **a green user-facing check does not end the
+investigation.** The first check found no symptom; the second found the fault.
+
+#### The exact order of checks used
+
+Outside-in: what the user sees → what the orchestrator says → what the load
+balancer says **and why** → its configuration → the app → the network. Each
+check either finds the fault or rules out a layer.
+
+| # | Check | Command | Result here | What it ruled in or out |
+| --- | --- | --- | --- | --- |
+| 1 | **What does a user see?** | `curl $ALB/healthz` ×5 | 200, 200, 200, 200, 200 | no user-visible symptom — *which does not mean healthy* (fail-open) |
+| 2 | **What does ECS say?** counts, then service events | `aws ecs describe-services … events` | 2/2, but *"(port 3000) is unhealthy in target-group … codes: [404]"* and *"replaced 1 tasks due to an unhealthy status"* | tasks are being killed; the trigger is the **target group**, not the container or a crash |
+| 3 | **What does the ALB think of each target, and why?** | `aws elbv2 describe-target-health` | every target `unhealthy`, reason **`Target.ResponseCodeMismatch`**, *"codes: [404]"* | the reason code picks the layer: *ResponseCodeMismatch* = the app **answered**, with the wrong code. That rules out the network and "app not listening", which would be `Target.Timeout` |
+| 4 | **Is the health check asking the right question?** | `aws elbv2 describe-target-groups` | path **`/readyz-typo`**, port traffic-port, matcher 200 | **fault found** — the path |
+| 5 | **Is the app itself alive?** | `aws ecs describe-tasks` → container health | both tasks `RUNNING`, container health **`HEALTHY`** (the in-task `/healthz` check) | the app is fine; confirms it is not an app bug |
+| 6 | **What does the app answer on the probed path vs the right one?** | `curl $ALB/readyz-typo`, `curl $ALB/readyz` | `{"error":"not found"}` **404** · `{"status":"ready"}` **200** | proves the diagnosis end to end (possible through the ALB precisely because of fail-open; the tasks have no other inbound path) |
+| 7 | **Network, only to rule it out** | `aws ec2 describe-security-groups` on the app SG | 3000 from `sg-03082ef58d9f2db8a` still present | nothing changed there — and check 3 had already said so |
+| — | **Fix** | `aws elbv2 modify-target-group --health-check-path /readyz` | | |
+| — | **Verify** | target health, service steady, requests | both targets `healthy` at 02:42:54, *"has reached a steady state"* 02:42:47, 6 requests answered by 2 tasks | |
+
+Checks 5–7 came after the fault was already found at check 4. On a real
+incident I would still run 5 and 6 before changing anything, to confirm the
+theory rather than act on the first plausible one; 7 is included to show the
+network was ruled out by evidence (the reason code), not assumed.
+
+#### The other suggested break, and how the order would have differed
+
+A **wrong target-group port** (health check port 3001) fails differently: nothing
+listens and the app SG does not admit it, so check 3 returns
+**`Target.Timeout`**. That sends the investigation to check 7 (security groups)
+and the port settings first, and check 6 would show the app answering normally
+on 3000. The order stays the same; the reason code in check 3 decides which
+later check matters.
+
+<!-- status: DONE -->
 
 ---
 
@@ -833,5 +1209,9 @@ numbers. Because the account is shared, those numbers will include other
 students' spend — the cleanup is proven by the resource listings, and the
 billing page is compared against `evidence/c0-billing-mtd.png` from before any
 billable resource of mine existed.
+
+<!-- local cleanup, not AWS: AWS CLI v2.36.44 was installed on the laptop for C2-C5
+     because CloudShell refused to start ("account verification is in progress").
+     Remove at the end:  rm -rf ~/aws-cli ~/.aws /opt/homebrew/bin/aws /opt/homebrew/bin/aws_completer -->
 
 <!-- status: not started -->
