@@ -2,9 +2,14 @@
 # exam token: root-vmi3536696-1788282556-1536d427
 #
 # Scenario C4 -- one app instance, every tenant, routed by hostname.
-# Rendered by c4-install.sh, which replaces @@TENANT_VALUE@@ (62.3: fixed or
-# buggy) and @@METRICS_BLOCK@@ (62.4: /metrics blocked or open). Do not edit the
-# copy in /etc by hand.
+# Rendered by c4-install.sh, which fills in two placeholders: the X-Tenant
+# value (62.3: fixed or buggy) and the /metrics rule (62.4: blocked or open).
+# Do not edit the copy in /etc by hand.
+#
+# (Install run 1 failed `nginx -t` because this very comment used to spell the
+# placeholder names: the renderer replaced them here too, and the multi-line
+# /metrics rule landed outside any server block. Placeholders now appear only
+# where they are meant to, and the renderer counts them before substituting.)
 #
 # WHY PORT 8141 AND NOT 80: this VPS is shared. Port 80's default server belongs
 # to another student (sites-enabled/emaapp). Task 62.1 needs unknown hostnames

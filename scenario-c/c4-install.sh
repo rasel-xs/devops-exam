@@ -28,7 +28,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-RAW=https://raw.githubusercontent.com/rasel-xs/devops-exam/main/scenario-c
+# Pinned to a commit, not `main`: raw.githubusercontent.com caches files for a
+# few minutes, so a fix pushed a moment ago could still be served stale.
+C4_REF=${C4_REF:-main}
+RAW=https://raw.githubusercontent.com/rasel-xs/devops-exam/$C4_REF/scenario-c
 SERVICE=abdur_notes_app
 BASE=abdur.169.58.246.108.nip.io
 PUBLIC_IP=169.58.246.108
@@ -55,9 +58,17 @@ case "$METRICS" in
   *) die "--metrics must be blocked or open" ;;
 esac
 
-TPL=$(curl -fsSL "$RAW/c4/abdur-c4.conf.template") || die "could not download the template"
+TPL=$(curl -fsSL "$RAW/c4/abdur-c4.conf.template") || die "could not download the template ($C4_REF)"
+# Count the placeholders BEFORE substituting: exactly one X-Tenant value and
+# one /metrics rule per server block. Anything else means the template is not
+# the one this script was written for (run 1: a comment contained them too).
+n_t=$(printf '%s' "$TPL" | grep -c '@@TENANT_VALUE@@')
+n_m=$(printf '%s' "$TPL" | grep -c '@@METRICS_BLOCK@@')
+[ "$n_t" = 1 ] && [ "$n_m" = 2 ] || die "template placeholders: TENANT_VALUE x$n_t (want 1), METRICS_BLOCK x$n_m (want 2)"
 CONF=${TPL//@@TENANT_VALUE@@/$TENANT_VALUE}
 CONF=${CONF//@@METRICS_BLOCK@@/$METRICS_BLOCK}
+printf '%s' "$CONF" | grep -q '@@' && die "unreplaced placeholder left in rendered config"
+echo "template: $C4_REF, placeholders ok"
 
 BACKUP=""
 if [ -f "$AVAIL" ]; then BACKUP=$(mktemp); cp "$AVAIL" "$BACKUP"; fi

@@ -1,0 +1,21 @@
+# Transcribed from the terminal screenshot the user shared in the working session
+# (the VPS copy is /root/abdur-c4-install.txt). Kept because the failure proves
+# the install's safety net: nginx -t failed, the previous state was restored,
+# and nginx was NOT reloaded -- no other student's site was affected.
+
+root@vmi3536696:~# bash /root/abdur-c4-install.sh 2>&1 | tee /root/abdur-c4-install.txt
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:26:12 CEST 2026
+=== nginx: render abdur-c4 (header=fixed, metrics=blocked) ===
+2026/09/15 17:26:13 [emerg] 2791517#2791517: "location" directive is not allowed here in /etc/nginx/sites-enabled/abdur-c4:8
+nginx: configuration file /etc/nginx/nginx.conf test failed
+
+STOPPED: nginx -t failed -- previous config restored, nothing reloaded
+
+# Cause: the template's own header comment contained the placeholder names, so
+# ${CONF//@@METRICS_BLOCK@@/...} substituted inside the comment as well; only the
+# first line of the three-line /metrics rule stayed commented, and
+# `location = /metrics { return 404; }` landed at http{} level (rendered line 8).
+# Fix: placeholder names removed from the comment; the renderer now counts
+# placeholders before substituting and refuses to write a config that still
+# contains "@@".
