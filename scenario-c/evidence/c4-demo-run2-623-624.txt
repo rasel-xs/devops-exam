@@ -1,0 +1,58 @@
+# Pasted by the user from the VPS (/root/abdur-c4-demo-run2-623.txt, -624.txt),
+# after the install script learned to wait for an nginx reload to take effect.
+# Scripts at commit 19dabf0dc26d154da6b2a0854266705313ff6049.
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:48:12 CEST 2026
+=== TASK 62.3 -- can a client fake the tenant header?  (1) the BUGGY config ===
+reloaded. X-Tenant line and /metrics rule now in effect:
+73:        proxy_set_header X-Tenant $abdur_tenant_buggy;
+101:        proxy_set_header X-Tenant "";
+$ curl -H 'X-Tenant: globex' http://acme.abdur.169.58.246.108.nip.io:8141/api/notes      (x3)
+  try 1: "title":"Welcome to Globex Corporation"
+  try 2: "title":"Welcome to Globex Corporation"
+  try 3: "title":"Welcome to Globex Corporation"
+  ^ acme's hostname, globex's notes: VULNERABLE
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:48:29 CEST 2026
+=== TASK 62.3 -- (2) FIXED: nginx always overwrites X-Tenant from the hostname ===
+reloaded. X-Tenant line and /metrics rule now in effect:
+73:        proxy_set_header X-Tenant $abdur_host_tenant;
+101:        proxy_set_header X-Tenant "";
+$ curl -H 'X-Tenant: globex' http://acme.abdur.169.58.246.108.nip.io:8141/api/notes      (x3)
+  try 1: "title":"Welcome to Acme Corp"
+  try 2: "title":"Welcome to Acme Corp"
+  try 3: "title":"Welcome to Acme Corp"
+  ^ the fake header is replaced by nginx: acme's notes
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:48:46 CEST 2026
+=== done ===
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:48:59 CEST 2026
+=== TASK 62.4 -- one more isolation bug: /metrics on a tenant hostname  (1) BUG ===
+=== nginx: render abdur-c4 (header=fixed, metrics=open) ===
+reloaded. X-Tenant line and /metrics rule now in effect:
+60:    # 62.4 BUG (demonstration): /metrics is proxied like any other path.
+88:    # 62.4 BUG (demonstration): /metrics is proxied like any other path.
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/metrics | grep 'tenant="globex"'
+http_requests_total{route="/api/notes",method="GET",tenant="globex",status="200",app="notes-api"} 13
+http_requests_total{route="/api/domains",method="POST",tenant="globex",status="201",app="notes-api"} 1
+http_requests_total{route="/api/domains/:domain/verify",method="POST",tenant="globex",status="200",app="notes-api"} 1
+http_request_duration_seconds_bucket{le="0.005",app="notes-api",route="/api/notes",method="GET",tenant="globex"} 0
+  ^ acme's hostname shows globex's traffic, routes and status codes
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:49:04 CEST 2026
+=== TASK 62.4 -- (2) FIXED ===
+=== nginx: render abdur-c4 (header=fixed, metrics=blocked) ===
+reloaded. X-Tenant line and /metrics rule now in effect:
+62:    location = /metrics { return 404; }
+92:    location = /metrics { return 404; }
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/metrics      (x3, status only)
+  try 1: [HTTP 404]
+  try 2: [HTTP 404]
+  try 3: [HTTP 404]
+--- Prometheus still scrapes the app directly, bypassing tenant hostnames:
+$ curl http://127.0.0.1:3140/metrics | grep -c http_requests_total
+14
+
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 17:49:07 CEST 2026
+=== done ===

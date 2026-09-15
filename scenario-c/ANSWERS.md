@@ -1524,6 +1524,58 @@ routing on the `Host` header. A customer can also bring their own domain.
 A real domain is needed. A cheap `.xyz`, DuckDNS or nip.io all count.
 `/etc/hosts` simulation is allowed but **loses 3 marks** and must be declared.
 
+#### Route taken — real DNS, no `/etc/hosts`
+
+| Need | What I used | Why it counts as real DNS |
+| --- | --- | --- |
+| Wildcard tenant domain | **`*.abdur.169.58.246.108.nip.io`** | nip.io is a public DNS service that answers *any* name ending in `<ip>.nip.io` with that IP. `acme.abdur.169.58.246.108.nip.io` resolves to the VPS from anywhere on the internet — checked from the VPS (`getent hosts`) and from my laptop in Dhaka (`curl`). The `abdur.` label keeps my names apart from other students on the same shared IP |
+| A customer's own domain (61) | **`notes.globex-corp.169.58.246.108.sslip.io`** | sslip.io is a **different** public DNS service with the same behaviour — a genuinely separate domain name that a tenant can "bring", pointed at the VPS |
+
+Nothing was simulated with `/etc/hosts`, on the VPS or on the client.
+
+#### Where it runs, and why port 8141
+
+C4 runs on the **exam VPS** (169.58.246.108): nginx 1.24 in front of the
+Scenario B swarm service `abdur_notes_app` (published on 3140) and its Postgres
+— not on AWS, so no ALB (which cannot have a nip.io address — it has no fixed
+IP) and no extra cost.
+
+A read-only recon first (`c4-vps-recon.sh`, `evidence/c4-vps-recon.png`) found
+that **port 80 is shared**: its `default_server` belongs to another student's
+site (`sites-enabled/emaapp`). Task 62.1 needs *unknown* hostnames to reach **my**
+default server, which on port 80 would mean taking theirs. So everything listens
+on **8141**, where the default server is mine, and every name in the config is
+prefixed `abdur_` because nginx's `http{}` block is shared too. The URLs carry
+`:8141`; the brief requires HTTP, not port 80. The recon also showed the VPS
+database had no tenants at all, so `acme` and `globex` were created through the
+new provisioning endpoint (task 60) by the installer.
+
+| Piece | File |
+| --- | --- |
+| nginx config (two server blocks on 8141) | [`c4/abdur-c4.conf.template`](c4/abdur-c4.conf.template), rendered to `/etc/nginx/sites-available/abdur-c4` |
+| app: host routing, provisioning, domains | [`scenario-b/app/src/tenancy.js`](../scenario-b/app/src/tenancy.js), [`db/schema.sql`](../scenario-b/app/db/schema.sql) |
+| installer | [`c4-install.sh`](c4-install.sh) — `nginx -t` must pass before any reload; a failed test restores the previous file |
+| proofs | [`c4-demo.sh`](c4-demo.sh) |
+
+The same image runs everywhere. Host mode switches on only where
+`TENANT_BASE_DOMAIN` is set (the VPS service); the ECS deployment stays in header
+mode — checked through the ALB after the deploy: no header → 400, `acme` → 200,
+unknown → 404, cross-tenant attachment → 403, reserved slug → 422.
+
+**Installing did not go cleanly the first time**, and both failures are kept:
+
+1. **Install run 1 stopped at `nginx -t`**
+   (`evidence/c4-install-run1-nginx-test-failed.txt`): *"location" directive is
+   not allowed here*. The template's own header comment spelled the placeholder
+   names, the renderer substituted inside the comment too, and the three-line
+   `/metrics` rule landed outside any server block. The safety net worked — the
+   previous state was restored and **nginx was not reloaded**, so no other
+   student's site was touched. Fixed by removing the names from the comment and
+   making the renderer count placeholders first and refuse to write a config
+   still containing `@@`. Run 2 installed cleanly (`evidence/c4-install-run2.txt`).
+2. **Demo run 1's "fixed" checks for 62.3 and 62.4 ran inside the nginx reload
+   window** — see 62.3 below.
+
 ### Task 59 (8 marks) — Wildcard DNS and Host-based routing
 
 Prove: `acme.<domain>/api/notes` returns acme's notes; `globex.<domain>` returns
@@ -1531,7 +1583,49 @@ different notes; `doesnotexist.<domain>` returns a clean 404 rather than a
 crash; and `docker ps` / `systemctl status` shows only **one** app instance
 serving all of them.
 
-<!-- status: not started -->
+Screenshot `evidence/c4-task59-host-routing.png`; text `evidence/c4-demo-run1.txt`.
+
+```
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/api/notes?limit=3
+  titles: "Welcome to Acme Corp" "Getting started" "Your address"            [HTTP 200]
+$ curl http://globex.abdur.169.58.246.108.nip.io:8141/api/notes?limit=3
+  titles: "Welcome to Globex Corporation" "Getting started" "Your address"   [HTTP 200]
+$ curl http://doesnotexist.abdur.169.58.246.108.nip.io:8141/api/notes
+{"error":"unknown tenant: doesnotexist"}                                     [HTTP 404]
+
+acme / globex / doesnotexist .abdur.169.58.246.108.nip.io  -> 169.58.246.108   (all three)
+
+$ docker service ls --filter name=abdur_notes_app
+abdur_notes_app   replicated   1/1   ghcr.io/rasel-xs/notes-api:v1.0.100   *:3140->3000/tcp
+$ docker service ps abdur_notes_app --filter desired-state=running
+abdur_notes_app.1   ghcr.io/rasel-xs/notes-api:v1.0.100   vmi3536696   Running 4 minutes ago
+```
+
+Different notes for different hostnames, from **one** container: the swarm
+service was scaled from 3 replicas to 1 by the installer precisely so this shows
+a single instance, not a per-tenant deployment. `doesnotexist` resolves to the
+same server (wildcard DNS cannot know which tenants exist) and gets a JSON 404 —
+the process is unaffected.
+
+#### How one request finds its tenant
+
+```
+acme.abdur.169.58.246.108.nip.io:8141
+      │  DNS (nip.io wildcard) → 169.58.246.108
+      ▼
+nginx :8141  server_name "~^(?<abdur_slug>[a-z0-9][a-z0-9-]{1,30}[a-z0-9])\.abdur\.169\.58\.246\.108\.nip\.io$"
+      │  proxy_set_header X-Tenant $abdur_host_tenant;   ← "acme", derived from Host, ALWAYS set
+      ▼
+abdur_notes_app (1 replica) → resolveTenant: slug → tenant id → every query WHERE tenant_id = $n
+```
+
+The regex in `server_name` is the wildcard server block. The tenant name is
+extracted by an `abdur_`-prefixed `map $host` with the same pattern, so the
+value handed to the app can only come from the hostname. A second
+`listen 8141 default_server` block takes every other hostname and sends **no**
+`X-Tenant` at all (tasks 61 and 62.1).
+
+<!-- status: DONE -->
 
 ### Task 60 (7 marks) — Automatic tenant provisioning
 
@@ -1546,14 +1640,131 @@ validation does `slug` need — what about `www`, `api`, `admin`, or a slug with
 dot in it? Implement at least a reserved-name blocklist and show it rejecting
 one.
 
-<!-- status: not started -->
+Screenshot `evidence/c4-task60-provision.png`; text `evidence/c4-demo-run1.txt`.
+
+```
+before: nginx config last changed 2026-09-15 17:29:17
+
+$ curl -X POST http://abdur.169.58.246.108.nip.io:8141/api/tenants -d '{"slug":"initech","name":"Initech LLC"}'
+{"tenant":{"id":3,"slug":"initech","name":"Initech LLC"},
+ "url":"http://initech.abdur.169.58.246.108.nip.io:8141/","seededNotes":3,"s3Prefix":"tenants/initech/"}
+[HTTP 201]
+
+$ curl http://initech.abdur.169.58.246.108.nip.io:8141/api/notes      <- no DNS or nginx change in between
+  titles: "Welcome to Initech LLC" "Getting started" "Your address"     [HTTP 200]
+after:  nginx config last changed 2026-09-15 17:29:17
+
+  slug www        -> {"error":"slug \"www\" is reserved"}  [HTTP 422]
+  slug api        -> {"error":"slug \"api\" is reserved"}  [HTTP 422]
+  slug admin      -> {"error":"slug \"admin\" is reserved"}  [HTTP 422]
+  slug acme.evil  -> {"error":"slug must not contain dots (it would become a nested subdomain)"}  [HTTP 422]
+```
+
+Provisioned and served within the same second; the nginx file's modification
+time is identical before and after.
+
+#### What `POST /api/tenants` does
+
+In one transaction: insert the tenant (`ON CONFLICT (slug) DO NOTHING` → **409**
+if taken, so two simultaneous requests for one slug cannot both win), insert
+three seed notes, commit; return the tenant, its URL, the seed count and its S3
+prefix. **The S3 prefix needs no creation step**: S3 has no directories —
+`tenants/initech/` exists the moment the first object is written under it, and
+the bucket policy and task role (C3) already cover `tenants/*`. Creating an
+empty marker object would only add a failure mode. (On the VPS there are no AWS
+credentials at all — deliberately, it is a shared root box — so the VPS
+deployment reports the prefix it will use; uploads work on the ECS deployment.)
+
+#### Why no DNS or nginx change was needed
+
+- **DNS:** the record is a wildcard. nip.io answers every
+  `<anything>.abdur.169.58.246.108.nip.io` with the VPS's IP, so `initech` resolved
+  before it existed — as does `doesnotexist`. With a registered domain this is one
+  `*.domain A <ip>` record, created once.
+- **nginx:** the server block matches a **pattern**, not a list of names, and
+  passes whatever label it captured. It never needs to know which tenants exist.
+- **The only place a tenant exists is the database**, so creating one is an
+  `INSERT`. The app looks the slug up on every request (cached after the first).
+
+The flip side is task 59's `doesnotexist`: because DNS and nginx accept every
+label, the application must be the thing that says "no such tenant".
+
+#### What `slug` needs — implemented in `validateSlug()`
+
+A slug becomes a DNS label, an S3 key prefix and a metrics label at once:
+
+| Rule | Why | Example refused |
+| --- | --- | --- |
+| 3–32 characters of `a-z 0-9 -` | DNS label characters; bounded length | `a_b`, `ab` |
+| starts and ends with a letter or digit | a DNS label cannot begin or end with `-` | `-acme`, `acme-` |
+| **no dots** | `acme.evil` would be a *nested* subdomain: either it never matches the one-label regex, or a looser pattern would serve it as a tenant while `evil.<base>` looks like a different one | `acme.evil` |
+| lowercase only | hostnames are case-insensitive; `Acme` and `acme` must not be two tenants | `Acme` |
+| no `--` | `xn--…` labels are punycode — the way to register a look-alike (`аcme` with a Cyrillic а) | `xn--80ak6aa92e` |
+| **not reserved** | `www`, `api`, `admin`, `login`, `billing`, `support`, `status`… are either names users trust (a phishing page on `admin.<base>` or `login.<base>` looks official) or names the service needs for itself later (`api`, `mail`, `metrics`, `grafana`) | `www`, `api`, `admin` |
+
+The blocklist has 51 entries. Uniqueness is the database's job, not validation's:
+`tenants.slug` is `UNIQUE`.
+
+<!-- status: DONE -->
 
 ### Task 61 (6 marks) — Custom domain
 
 `notes.theircompany.com` instead of `theircompany.<domain>`. A real second
 domain scores full marks; state clearly which route was taken.
 
-<!-- status: not started -->
+**Route taken: a real second domain** — `notes.globex-corp.169.58.246.108.sslip.io`,
+on the public sslip.io DNS service (separate from the nip.io tenant domain),
+attached to tenant `globex`. Screenshot `evidence/c4-task61-custom-domain.png`;
+text `evidence/c4-demo-run1.txt`.
+
+```
+notes.globex-corp.169.58.246.108.sslip.io -> 169.58.246.108
+
+1. globex claims it (request arrives on globex's own subdomain)
+$ curl -X POST http://globex.abdur.169.58.246.108.nip.io:8141/api/domains -d '{"domain":"notes.globex-corp.169.58.246.108.sslip.io"}'
+{"domain":"notes.globex-corp.169.58.246.108.sslip.io","verified":false,"tenant":"globex",
+ "next":"point an A record for … at 169.58.246.108, then POST /api/domains/…/verify"}   [HTTP 201]
+
+2. before verification the domain serves nothing
+$ curl http://notes.globex-corp.169.58.246.108.sslip.io:8141/api/notes
+<h1>Domain not configured</h1> …                                                        [HTTP 404]
+
+3. verify: the app resolves the name and checks it points here
+$ curl -X POST http://globex.abdur.169.58.246.108.nip.io:8141/api/domains/notes.globex-corp.169.58.246.108.sslip.io/verify
+{"domain":"…","verified":true,"addresses":["169.58.246.108"]}                           [HTTP 200]
+
+4. now the custom domain is globex
+$ curl http://notes.globex-corp.169.58.246.108.sslip.io:8141/api/notes
+  titles: "Welcome to Globex Corporation" "Getting started" "Your address"               [HTTP 200]
+```
+
+#### How it works
+
+- The custom hostname does **not** match the subdomain regex, so it lands on the
+  `default_server` block, which sends **no** `X-Tenant`. The app's `gate`
+  middleware looks the hostname up:
+  `SELECT … FROM tenant_domains d JOIN tenants t … WHERE d.domain = $1 AND d.verified`.
+  Found → that tenant; not found → the "domain not configured" page (62.1).
+- A domain is **claimed** by the tenant whose own hostname the request arrived
+  on — the tenant comes from nginx, not from the request body — and stays
+  unusable until **verified**: the app resolves its A record and requires the
+  VPS's IP among the answers. Claiming without controlling DNS gets you nothing.
+- The lookup is **not cached**. A domain removed or re-assigned must stop serving
+  the old tenant immediately; a hostname-keyed cache is a classic place for one
+  tenant's data to be served under another's name.
+- nginx needed **no change** for this domain either: the default server block
+  already accepts any hostname.
+
+**Honest limits.** Verification here checks only that DNS points at the service,
+which proves the claimer controls DNS *or* that someone else already pointed it
+here — a production service would require a per-claim TXT token
+(`_verify.notes.theircompany.com TXT <random>`) so that pointing DNS is not enough
+on its own. There is no user authentication in this app at all, so "the tenant
+whose hostname the request arrived on" is the whole authorisation model. And a
+real custom domain would need a TLS certificate per hostname (e.g. on-demand ACME)
+— not required by this brief.
+
+<!-- status: DONE -->
 
 ### Task 62 (5 marks) — What can go wrong
 
@@ -1572,7 +1783,168 @@ Answer in ANSWERS.md; a demonstration doubles the marks for each point.
    `WHERE tenant_id`, a cache key without the tenant, an id lookup that does not
    check ownership, or a log line leaking across tenants.
 
-<!-- status: not started -->
+All four points were **demonstrated**, not only answered.
+
+#### 62.1 — DNS pointed at us before the domain was added or verified
+
+Screenshot `evidence/c4-task62-1-domain-not-configured.png`.
+
+```
+$ curl http://notes.unknowncompany.169.58.246.108.sslip.io:8141/
+<!doctype html><title>Domain not configured</title>
+<h1>Domain not configured</h1>
+<p><b>notes.unknowncompany.169.58.246.108.sslip.io</b> is not connected to any workspace on this service.</p>
+<p>If this is your domain, add it in your workspace settings and verify it.</p>
+[HTTP 404]
+(same for /api/notes)
+```
+
+**What a visitor would see without the fix** depends on the fallback, and every
+common fallback is bad: port 80's catch-all on this VPS is another student's
+site, so they would see an unrelated app; a naive "no tenant → default tenant"
+serves **someone else's data**; an app that assumes a tenant exists crashes with
+a 500. The fix is that unknown hostnames have a defined, boring answer:
+nginx's `default_server` sends no tenant, and the app's `gate` runs before
+**every** route (only `/healthz`, `/readyz`, `/metrics` are exempt) and answers
+404 "domain not configured" unless the hostname is a **verified** custom domain.
+Task 61 step 2 shows the same page for a domain that *was* claimed but not yet
+verified — the case in the question exactly. `/` is deliberately not exempt, so
+the home page gets the page too, not the app's banner.
+
+#### 62.2 — two tenants claim the same domain
+
+Screenshot `evidence/c4-task62-2-duplicate-domain-409.png`.
+
+```
+$ curl -X POST http://acme.abdur.169.58.246.108.nip.io:8141/api/domains -d '{"domain":"notes.globex-corp.169.58.246.108.sslip.io"}'
+{"error":"domain notes.globex-corp.169.58.246.108.sslip.io is already claimed by another workspace","constraint":"tenant_domains_pkey"}
+[HTTP 409]
+
+                       Table "public.tenant_domains"
+ domain     | text    | not null
+ tenant_id  | integer | not null
+ verified   | boolean | not null | false
+Indexes:
+    "tenant_domains_pkey" PRIMARY KEY, btree (domain)
+Foreign-key constraints:
+    "tenant_domains_tenant_id_fkey" FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+```
+
+**What stops the second tenant is the database, not an `if`.** `domain` is the
+table's primary key, so a second row for the same hostname is impossible no
+matter how the requests arrive — even two claims racing through different app
+replicas, where a "check, then insert" in application code would let both pass
+the check. The app catches the unique violation (`23505`) and returns 409 with
+the constraint name. The message says "another workspace" without naming it:
+which tenant owns a domain is not acme's business. Claims are only by the tenant
+the request arrived as, so acme cannot claim *on behalf of* globex either.
+
+#### 62.3 — the tenant header can be faked
+
+Screenshot `evidence/c4-task62-3-header-spoof.png`; text
+`evidence/c4-demo-run2-623-624.txt`.
+
+The brief's test was run against a deliberately **buggy** nginx config first —
+the kind of "handy override" that gets added for debugging:
+`map $http_x_tenant $abdur_tenant_buggy { "" $abdur_host_tenant; default $http_x_tenant; }`
+(use the client's header when there is one). Then against the real config:
+
+```
+(1) BUGGY   proxy_set_header X-Tenant $abdur_tenant_buggy;
+$ curl -H 'X-Tenant: globex' http://acme.abdur.169.58.246.108.nip.io:8141/api/notes      (x3)
+  try 1: "title":"Welcome to Globex Corporation"
+  try 2: "title":"Welcome to Globex Corporation"
+  try 3: "title":"Welcome to Globex Corporation"
+  ^ acme's hostname, globex's notes: VULNERABLE
+
+(2) FIXED   proxy_set_header X-Tenant $abdur_host_tenant;
+$ curl -H 'X-Tenant: globex' http://acme.abdur.169.58.246.108.nip.io:8141/api/notes      (x3)
+  try 1: "title":"Welcome to Acme Corp"
+  try 2: "title":"Welcome to Acme Corp"
+  try 3: "title":"Welcome to Acme Corp"
+```
+
+**What stops it:** `proxy_set_header X-Tenant $abdur_host_tenant` **replaces** any
+`X-Tenant` the client sent — nginx does not append to or pass through a header it
+sets — and `$abdur_host_tenant` is derived only from `Host` through the regex.
+On the default server it is set to `""`, which makes nginx send no `X-Tenant` at
+all, so a client cannot inject one on a custom or unknown domain either.
+
+Why it is a real vulnerability even though this app has no login: in any real
+multi-tenant service the user's session is bound to *their* hostname
+(`acme.<domain>` cookies). If the backend trusts a header over the hostname,
+acme's logged-in user can act on globex's data with one extra header — the
+authentication check passes (valid acme session) and the tenant check reads the
+attacker's header.
+
+**Demo run 1 got this wrong, and it is recorded** (`evidence/c4-demo-run1.txt`).
+Its "(2) FIXED" half printed globex's notes under a label saying acme. Checked
+from the laptop minutes later, three requests each returned acme — the config was
+right, the *test* was wrong: `systemctl reload nginx` only sends the signal and
+returns, and until the master has started new workers and told the old ones to
+stop accepting, an old worker still running the previous (buggy) config can take
+the next connection. The demo curled inside that window. The installer now waits
+for old workers to finish shutting down and settles before returning, and the
+demo sends three separate requests, because one answer is not proof. Run 2 above
+is the result.
+
+**Remaining exposure, stated:** port 3140 (the swarm routing mesh) is published
+on all interfaces, so a client can reach the app directly, skip nginx, and send
+any `X-Tenant`. With no authentication that grants nothing a visitor to
+`globex.<domain>` does not already have; with authentication the fix is to stop
+publishing 3140 publicly (host firewall allowing only 127.0.0.1) or to have nginx
+add a secret the app requires before trusting the header.
+
+#### 62.4 — one more isolation bug in my own code: `/metrics` on tenant hostnames
+
+Screenshot `evidence/c4-task62-4-metrics-leak.png`; text
+`evidence/c4-demo-run2-623-624.txt`.
+
+B3 labelled every request metric with `tenant`, and `/metrics` is an ordinary
+route on the app. In host mode that means **every tenant's hostname serves every
+tenant's metrics**:
+
+```
+(1) BUG
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/metrics | grep 'tenant="globex"'
+http_requests_total{route="/api/notes",method="GET",tenant="globex",status="200",app="notes-api"} 13
+http_requests_total{route="/api/domains",method="POST",tenant="globex",status="201",app="notes-api"} 1
+http_requests_total{route="/api/domains/:domain/verify",method="POST",tenant="globex",status="200",app="notes-api"} 1
+http_request_duration_seconds_bucket{le="0.005",app="notes-api",route="/api/notes",method="GET",tenant="globex"} 0
+
+(2) FIXED   location = /metrics { return 404; }   (in both server blocks)
+$ curl http://acme.abdur.169.58.246.108.nip.io:8141/metrics      (x3, status only)
+  try 1: [HTTP 404]
+  try 2: [HTTP 404]
+  try 3: [HTTP 404]
+$ curl http://127.0.0.1:3140/metrics | grep -c http_requests_total
+14
+```
+
+From acme's own address anyone can read the **list of every other tenant's slug**
+(the full dump in run 1 also showed `initech`, provisioned a minute earlier), how
+much traffic each has, which features they use (globex has a custom domain — the
+`/api/domains/:domain/verify` series) and their error rates and latency. That is
+a cross-tenant information leak of exactly the "log line leaking across tenants"
+kind, just through metrics instead of logs, and it exists because two correct
+decisions — per-tenant labels (B3) and one shared instance (C4) — combine badly.
+
+The fix is at the edge that defines tenant hostnames: nginx refuses `/metrics` on
+both server blocks, while Prometheus keeps scraping the app **directly on
+127.0.0.1:3140**, which never passes through a tenant-facing hostname — the
+count of 14 series proves monitoring still works. Defence in depth would also
+have the app refuse `/metrics` when a tenant header or custom domain is present.
+Run 1 of this demo hit the same reload window as 62.3 (its "fixed" half returned
+the whole metrics page); run 2 is shown.
+
+**Other candidates I checked and did not find:** every notes/search/stats query
+filters `tenant_id`; `GET /api/notes/:id` has the tenant in the `WHERE`, not in
+an `if` after the fetch (B5's PR #1 removed it on purpose and the PR pipeline
+caught it); C3's attachment keys are checked against the tenant before signing;
+the tenant slug cache maps slug → id and tenants are never deleted; the custom
+domain lookup is deliberately uncached.
+
+<!-- status: DONE except retaking the 62.3 and 62.4 screenshots (the files are still demo run 1) -->
 
 ---
 
