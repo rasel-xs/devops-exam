@@ -1,0 +1,94 @@
+# /etc/nginx/sites-available/abdur-c4   (symlinked into sites-enabled)
+# exam token: root-vmi3536696-1788282556-1536d427
+#
+# Scenario C4 -- one app instance, every tenant, routed by hostname.
+# Rendered by c4-install.sh, which replaces @@TENANT_VALUE@@ (62.3: fixed or
+# buggy) and @@METRICS_BLOCK@@ (62.4: /metrics blocked or open). Do not edit the
+# copy in /etc by hand.
+#
+# WHY PORT 8141 AND NOT 80: this VPS is shared. Port 80's default server belongs
+# to another student (sites-enabled/emaapp). Task 62.1 needs unknown hostnames
+# to reach MY default_server, which on port 80 would mean taking theirs. On 8141
+# the default_server is mine and nobody else's config is touched.
+#
+# Everything here is prefixed abdur_ because http{} is shared too: a map or
+# upstream named like someone else's would break their config, or mine.
+
+upstream abdur_c4_app {
+    # The Scenario B swarm service, published on 3140 by the routing mesh.
+    # 127.0.0.1, not localhost (see sites-available/abdur-myapp for why).
+    server 127.0.0.1:3140;
+    keepalive 16;
+}
+
+# ------------------------------------------------------------------ 62.3 -----
+# Which tenant name nginx passes on. $abdur_host_tenant comes from the Host
+# header via the regex server_name below and cannot be influenced otherwise.
+#
+#   fixed : the client's own X-Tenant header is IGNORED and always overwritten.
+#   buggy : the client's X-Tenant wins when present -- the "handy override for
+#           debugging" that turns into a tenant-switching vulnerability.
+#           Only ever rendered to demonstrate the bug, then replaced.
+map $http_x_tenant $abdur_tenant_buggy {
+    ""      $abdur_host_tenant;
+    default $http_x_tenant;
+}
+
+# Filled in by the regex server block; empty everywhere else.
+map $host $abdur_host_tenant {
+    default "";
+    "~^(?<abdur_sub>[a-z0-9][a-z0-9-]{1,30}[a-z0-9])\.abdur\.169\.58\.246\.108\.nip\.io$" $abdur_sub;
+}
+
+# ------------------------------------------------------------------ 59 -------
+# Wildcard subdomains: <slug>.abdur.169.58.246.108.nip.io:8141
+# nip.io answers ANY name ending in .169.58.246.108.nip.io with 169.58.246.108,
+# which is the wildcard DNS record; this regex is the wildcard server block.
+# A new tenant therefore needs neither a DNS change nor an nginx change (60).
+server {
+    listen 8141;
+    server_name "~^(?<abdur_slug>[a-z0-9][a-z0-9-]{1,30}[a-z0-9])\.abdur\.169\.58\.246\.108\.nip\.io$";
+
+    access_log /var/log/nginx/abdur-c4.access.log;
+    error_log  /var/log/nginx/abdur-c4.error.log;
+
+@@METRICS_BLOCK@@
+
+    location / {
+        proxy_pass http://abdur_c4_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # THE tenant decision. proxy_set_header REPLACES a header of the same
+        # name coming from the client -- it does not append.
+        proxy_set_header X-Tenant @@TENANT_VALUE@@;
+    }
+}
+
+# ------------------------------------------------------------------ 61, 62.1 -
+# Everything else that reaches 8141: custom domains (notes.<company>...sslip.io),
+# the bare base domain (provisioning), and hostnames nobody configured.
+# X-Tenant is set to "" -- which makes nginx send NO X-Tenant at all -- so the
+# app must decide from Host alone: a verified custom domain, or the
+# "domain not configured" page.
+server {
+    listen 8141 default_server;
+    server_name _;
+
+    access_log /var/log/nginx/abdur-c4.access.log;
+    error_log  /var/log/nginx/abdur-c4.error.log;
+
+@@METRICS_BLOCK@@
+
+    location / {
+        proxy_pass http://abdur_c4_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Tenant "";
+    }
+}

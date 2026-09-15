@@ -92,27 +92,13 @@ app.use((req, res, next) => {
 // ---------------------------------------------------------------------------
 // Tenancy
 // ---------------------------------------------------------------------------
-// Slug -> id, cached because it is on the hot path of every request and there
-// are five of them. Not a correctness risk: tenants are not deleted here.
-const tenantCache = new Map();
-
-async function resolveTenant(req, res, next) {
-  const slug = req.get('X-Tenant');
-  if (!slug) {
-    return res.status(400).json({ error: 'X-Tenant header is required' });
-  }
-  try {
-    if (!tenantCache.has(slug)) {
-      const r = await db.query('tenant_lookup',
-        'SELECT id FROM tenants WHERE slug = $1', [slug]);
-      if (r.rowCount === 0) return res.status(404).json({ error: `unknown tenant: ${slug}` });
-      tenantCache.set(slug, r.rows[0].id);
-    }
-    req.tenantId = tenantCache.get(slug);
-    req.tenantSlug = slug;
-    next();
-  } catch (err) { next(err); }
-}
+// Tenant resolution moved to src/tenancy.js in Scenario C4: header mode for
+// tests, Scenario B and the ALB deployment; host mode (subdomain via nginx, or a
+// verified custom domain) on the VPS. The gate runs before every route so an
+// unknown hostname can never fall through to a tenant.
+const tenancy = require('./tenancy');
+const { resolveTenant } = tenancy;
+app.use(tenancy.gate);
 
 // ---------------------------------------------------------------------------
 // Probes and metrics
@@ -267,6 +253,9 @@ app.get('/api/stats', resolveTenant, async (req, res, next) => {
 
 // Scenario C3: presigned S3 upload/download URLs (src/attachments.js).
 app.use(require('./attachments').router(resolveTenant));
+
+// Scenario C4: tenant provisioning and custom domains (src/tenancy.js).
+app.use(tenancy.router());
 
 // ---------------------------------------------------------------------------
 app.use((req, res) => res.status(404).json({ error: 'not found' }));

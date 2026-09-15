@@ -44,3 +44,20 @@ CREATE INDEX IF NOT EXISTS idx_notes_tenant_id ON notes (tenant_id);
 -- gets the fixed schema. To reproduce the "before" state for the measurement:
 --     DROP INDEX idx_tags_note_id;
 CREATE INDEX IF NOT EXISTS idx_tags_note_id ON tags (note_id);
+
+-- Scenario C4 (tasks 60-62). ALTER ... IF NOT EXISTS keeps this idempotent on
+-- databases created before C4 (the VPS Postgres and RDS both already have
+-- tenants).
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now();
+
+-- Task 62.2: the PRIMARY KEY on domain is what stops two tenants claiming the
+-- same hostname -- enforced by the database, so it holds even if two claims
+-- race each other through different app replicas. The app turns the unique
+-- violation into a 409.
+CREATE TABLE IF NOT EXISTS tenant_domains (
+  domain     TEXT PRIMARY KEY,
+  tenant_id  INT NOT NULL REFERENCES tenants(id),
+  verified   BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP DEFAULT now()
+);
