@@ -16,7 +16,8 @@
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
         "ecr:PutImage",
-        "ecr:BatchGetImage"
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
       ],
       "Resource": "arn:aws:ecr:eu-north-1:750069566598:repository/abdur-notes-api"
     },

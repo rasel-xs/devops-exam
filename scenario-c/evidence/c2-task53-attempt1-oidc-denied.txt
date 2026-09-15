@@ -1,0 +1,36 @@
+EXAM_TOKEN: root-vmi3536696-1788282556-1536d427 | Tue Sep 15 19:07:11 +06 2026
+Deploy run #34 (34970646404), attempt 1, job deploy-ecs (104390326880) -- step results:
+  1 Set up job: success
+  2 Run actions/checkout@v4: success
+  3 Assume the deploy role via OIDC (no stored credentials): failure
+  4 Show who we are now: skipped
+  5 Log in to ECR: skipped
+  6 Log in to GHCR (read the image just built): skipped
+  7 Run docker/setup-buildx-action@v3: skipped
+  8 Copy the image from GHCR to ECR: skipped
+  9 Register a new task definition revision: skipped
+  10 Update the service and wait for it to settle: skipped
+  11 Verify through the load balancer: skipped
+  21 Post Assume the deploy role via OIDC (no stored credentials): success
+  22 Post Run actions/checkout@v4: success
+  23 Complete job: success
+
+--- log lines from the failing step
+  role-to-assume: arn:aws:iam::750069566598:role/abdur-github-actions-ecs-deploy
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+Assuming role with OIDC
+##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity
+
+--- why: this repository's OIDC subject-claim setting
+{"use_default":true,"use_immutable_subject":true,"sub_claim_prefix":"repo:rasel-xs@39724326/devops-exam@1355109165"}
+owner id 39724326, repo id 1355109165
