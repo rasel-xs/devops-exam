@@ -2600,6 +2600,18 @@ be idempotent and driven from the current `main` rather than from the commit
 that triggered it. For this exam the behaviour is correct: the newest commit is
 what should go out, and the intermediate ones are exactly what you want dropped.
 
+**Postscript, 2026-09-15 (found during Scenario C task 53) — the limitation bit
+for real.** Run `33905733598` above was never approved or rejected, so it sat in
+`waiting` for **eleven days** and kept holding `deploy-main`. Every Deploy run
+after it — the Scenario C commits of 09-14 and two pushes on 09-15 — went to
+`pending`, was superseded by the next push, and ended `cancelled` **without a
+single job starting**. Nothing failed loudly; the pipeline simply stopped
+deploying, and the only visible sign was a run stuck on *Pending*. The fix was
+to **reject** the stale approval (approving it would have rolled the VPS back to
+the 09-04 build); run #34 started within seconds. Lesson: an approval gate needs
+an owner and a timeout — GitHub environments allow a wait timer but no
+auto-reject, so a forgotten review is an outage of the delivery pipeline itself.
+
 Note the deliberate asymmetry: the PR workflow uses `cancel-in-progress: true`,
 because superseding a build wastes nothing, while cancelling a half-finished
 deploy leaves the service mid-rollout — the exact state the group exists to

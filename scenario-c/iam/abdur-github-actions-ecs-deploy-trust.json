@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "OnlyGitHubActionsFromRaselXsDevopsExamMainBranch",
+      "Sid": "OnlyGitHubActionsFromRaselXsDevopsExamMainBranchPinnedByOwnerAndRepoId",
       "Effect": "Allow",
       "Principal": {
         "Federated": "arn:aws:iam::750069566598:oidc-provider/token.actions.githubusercontent.com"
@@ -11,7 +11,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:rasel-xs/devops-exam:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": "repo:rasel-xs@39724326/devops-exam@1355109165:ref:refs/heads/main"
         }
       }
     }
