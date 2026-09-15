@@ -2073,7 +2073,7 @@ Reading it honestly:
 - **AWS billing lags by up to a day**, so the final hours of my ALB, tasks and
   RDS will still be added after this screenshot.
 
-My own estimate (list prices, below) is **about $1.6–2.0**. The proof that
+My own estimate (list prices, below) is **about $2–2.5**. The proof that
 nothing of mine keeps costing is the listings above, not the bill.
 
 Estimated cost of what I ran (list prices, eu-north-1): RDS `db.t3.micro` about
@@ -2081,8 +2081,12 @@ Estimated cost of what I ran (list prices, eu-north-1): RDS `db.t3.micro` about
 storage), ALB about **$0.025/h + LCU** from 01:40 to 22:07 (~20.5 h ≈ $0.55),
 two 0.25 vCPU / 0.5 GB Fargate tasks about **$0.012/h each** (~20.5 h ≈ $0.50,
 plus the short-lived extra tasks in tasks 52 and 54), Container Insights for
-~20 h, a few cents of ECR, S3, Secrets Manager and CloudWatch Logs — **roughly
-$1.6–2.0 in total**.
+~20 h, a few cents of ECR, S3, Secrets Manager and CloudWatch Logs. My first
+estimate stopped there at $1.6–2.0 and **left out public IPv4**: AWS charges
+$0.005 an hour for every public IPv4 address, and this setup had about five of
+them for ~20 hours — one per Fargate task (`assignPublicIp`, no NAT gateway) and
+one per ALB node in each of three AZs — about another $0.50. **Roughly $2–2.5 in
+total.**
 
 #### What still refers to AWS, and why it is harmless
 
